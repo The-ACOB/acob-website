@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Facebook, Mail } from 'lucide-react';
 
 export default function Footer() {
@@ -11,13 +12,16 @@ export default function Footer() {
           {/* Brand - Full Width on Mobile */}
           <div className="md:col-span-2">
             <div className="mb-6">
-              <div className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent mb-4">
-                ACOB
+              <div className="mb-8">
+                <Image 
+                  src="/acob-footer-logo.png" 
+                  alt="ACOB - Applied Cognitio Olympiad Bangladesh" 
+                  width={600} 
+                  height={150}
+                  className="h-28 w-auto sm:h-36 opacity-100 transition-opacity object-contain"
+                />
               </div>
-              <p className="text-white/60 text-sm font-medium mb-3">
-                Applied Cognitio Olympiad Bangladesh
-              </p>
-              <p className="text-white/50 text-sm leading-relaxed max-w-md">
+              <p className="text-white/50 text-sm leading-relaxed max-w-md mt-4">
                 A premier academic competition fostering critical thinking, problem-solving excellence, and intellectual innovation among Bangladesh&apos;s brightest minds.
               </p>
             </div>
