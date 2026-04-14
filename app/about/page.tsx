@@ -23,7 +23,7 @@ export default function About() {
               About <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">ACOB</span>
             </h1>
             <p className="text-lg sm:text-xl md:text-2xl text-white/80 font-light leading-relaxed">
-              Building Bangladesh&apos;s Premier Academic Olympiad Platform and this is test
+              Building Bangladesh&apos;s Premier Academic Olympiad Platform
             </p>
           </div>
         </section>
