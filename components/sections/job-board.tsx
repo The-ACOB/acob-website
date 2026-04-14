@@ -32,7 +32,7 @@ const jobListings = [
       'Brand consistency',
       'Communication skills',
     ],
-    applicationLink: '#'
+    applicationLink: 'https://docs.google.com/forms/d/e/1FAIpQLSeGnwZUl_GfMCu6GvDOHN4GcdzwLupJVQtHmnUBowHVxiJSRg/viewform?usp=header'
   },
   {
     id: 'operations-manager',
@@ -47,7 +47,7 @@ const jobListings = [
       'Process improvement',
       'Strategic planning',
     ],
-    applicationLink: '#'
+    applicationLink: 'https://docs.google.com/forms/d/e/1FAIpQLSfrfqiUpvrNBH5WY2Jml_cw9C9tb-tBqHHvoRvyQ7rl1Z9G2g/viewform?usp=header'
   },
   {
     id: 'communications-manager',
@@ -62,7 +62,7 @@ const jobListings = [
       'Stakeholder management',
       'Strategic messaging',
     ],
-    applicationLink: '#'
+    applicationLink: 'https://docs.google.com/forms/d/e/1FAIpQLSev0Ie3355FTxpS9VC0l4G-fltX0RJGk31vj4gj9IKWL5d-YA/viewform?usp=header'
   },
   {
     id: 'social-media-manager',
@@ -77,7 +77,7 @@ const jobListings = [
       'Social media analytics',
       'Creative copywriting',
     ],
-    applicationLink: '#'
+    applicationLink: 'https://docs.google.com/forms/d/e/1FAIpQLSd3wq3WGFQYzJMmFty2_Qo-7q9twtJ6LzfracONRbGc57b09A/viewform?usp=header'
   },
 ];
 
