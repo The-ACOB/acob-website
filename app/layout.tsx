@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono, Outfit } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 import Navbar from '@/components/navbar'
 import Footer from '@/components/footer'
 import ScrollToTop from '@/components/scroll-to-top'
@@ -18,13 +17,16 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 const _outfit = Outfit({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
 
 export const metadata: Metadata = {
-  title: 'ACOB - Applied Cognitio Olympiad Bangladesh',
+  title: 'ACOB | Applied Cognitio Olympiad Bangladesh - Premier Academic Competition',
   description: 'Bangladesh\'s premier academic competition fostering critical thinking, problem-solving excellence, and intellectual innovation. Join ACOB to challenge your cognitive limits.',
-  keywords: ['olympiad', 'competition', 'education', 'stem', 'bangladesh', 'cognitio', 'academic excellence', 'critical thinking', 'acob'],
+  keywords: ['olympiad', 'competition', 'education', 'stem', 'bangladesh', 'cognitio', 'academic excellence', 'critical thinking', 'acob', 'acobd', 'applied cognitio'],
   authors: [{ name: 'ACOB Team' }],
-  metadataBase: new URL('https://acob.vercel.app'),
+  metadataBase: new URL('https://acobd.netlify.app'),
   alternates: {
     canonical: '/',
+  },
+  verification: {
+    google: 'Ko1DxraRMfkFIx5bxrDZ9yX4btw_ixwGUqRzbc_kVTk',
   },
   generator: 'ACOB Platform',
   icons: {
@@ -36,7 +38,7 @@ export const metadata: Metadata = {
     description: 'Fostering intellectual innovation and academic excellence among Bangladesh\'s brightest minds.',
     type: 'website',
     locale: 'en_US',
-    url: 'https://acob.vercel.app',
+    url: 'https://acobd.netlify.app',
     siteName: 'ACOB',
     images: [
       {
@@ -66,6 +68,27 @@ export const metadata: Metadata = {
   },
 }
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Applied Cognitio Olympiad Bangladesh',
+  alternateName: 'ACOB',
+  url: 'https://acobd.netlify.app',
+  logo: 'https://acobd.netlify.app/logo.png',
+  contactPoint: {
+    '@type': 'ContactPoint',
+    telephone: '',
+    contactType: 'customer service',
+    email: 'contact@acobd.com',
+    availableLanguage: ['English', 'Bengali'],
+  },
+  sameAs: [
+    'https://www.facebook.com/profile.php?id=61582673745324',
+    'https://linkedin.com/company/acobd',
+    'https://instagram.com/acobd',
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -74,11 +97,14 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" data-scroll-behavior="smooth">
       <body className="font-sans antialiased bg-black text-white">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <Navbar />
         {children}
         <ScrollToTop />
         <Footer />
-        <Analytics />
       </body>
     </html>
   )

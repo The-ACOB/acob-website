@@ -3,8 +3,8 @@ import ContactSection from '@/components/sections/contact';
 import PageTransition from '@/components/page-transition';
 
 export const metadata: Metadata = {
-  title: 'Contact - ACOB',
-  description: 'Get in touch with ACOB. We&apos;d love to hear from you.',
+  title: 'Contact Us | ACOB - Get in Touch',
+  description: 'Have questions about ACOB? Contact our team for inquiries regarding competitions, partnerships, or resources.',
 };
 
 export default function ContactPage() {

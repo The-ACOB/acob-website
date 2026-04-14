@@ -13,12 +13,16 @@ export default function Footer() {
           <div className="md:col-span-2">
             <div className="mb-6">
               <div className="mb-8">
-                <Image 
-                  src="/acob-footer-logo.png" 
+                <img 
                   alt="ACOB - Applied Cognitio Olympiad Bangladesh" 
-                  width={600} 
-                  height={150}
-                  className="h-28 w-auto sm:h-36 opacity-100 transition-opacity object-contain"
+                  loading="lazy" 
+                  width="600" 
+                  height="150" 
+                  decoding="async" 
+                  data-nimg="1" 
+                  className="h-28 w-auto sm:h-36 opacity-100 transition-opacity object-contain" 
+                  style={{ color: 'transparent' }} 
+                  src="/acob-footer-logo.png"
                 />
               </div>
               <p className="text-white/50 text-sm leading-relaxed max-w-md mt-4">

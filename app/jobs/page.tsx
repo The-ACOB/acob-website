@@ -3,8 +3,8 @@ import JobBoard from '@/components/sections/job-board';
 import PageTransition from '@/components/page-transition';
 
 export const metadata: Metadata = {
-  title: 'Jobs - ACOB',
-  description: 'Explore career opportunities and join the ACOB team.',
+  title: 'Career Opportunities | ACOB - Join Our Mission',
+  description: 'Explore rewarding career opportunities at ACOB. Join a team dedicated to fostering intellectual excellence and academic innovation in Bangladesh.',
 };
 
 export default function JobsPage() {

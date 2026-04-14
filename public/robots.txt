@@ -3,4 +3,4 @@ Allow: /
 Disallow: /_next/
 Disallow: /api/
 
-Sitemap: https://acob.vercel.app/sitemap.xml
+Sitemap: https://acobd.netlify.app/sitemap.xml

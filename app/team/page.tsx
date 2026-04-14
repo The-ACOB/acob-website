@@ -4,8 +4,8 @@ import ExecutiveBoard from '@/components/sections/executive-board';
 import PageTransition from '@/components/page-transition';
 
 export const metadata: Metadata = {
-  title: 'Team - ACOB',
-  description: 'Meet the leadership and executive board of Applied Cognitio Olympiad Bangladesh.',
+  title: 'Meet the Team | ACOB - Applied Cognitio Olympiad Bangladesh',
+  description: 'Learn about the visionaries and experts leading Applied Cognitio Olympiad Bangladesh (ACOB). Meet our leadership and executive board.',
 };
 
 export default function TeamPage() {
