@@ -20,7 +20,7 @@ export default function Footer() {
                   height="150" 
                   decoding="async" 
                   data-nimg="1" 
-                  className="h-28 w-auto sm:h-36 opacity-100 transition-opacity object-contain" 
+                  className="h-10 w-auto sm:h-14 opacity-100 transition-opacity object-contain" 
                   style={{ color: 'transparent' }} 
                   src="/acob-footer-logo.png"
                 />
@@ -82,7 +82,7 @@ export default function Footer() {
             <ul className="space-y-4">
               <li>
                 <Link 
-                  href="https://makeform.ai/f/2u09IMK6" 
+                  href="/enroll" 
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-white/60 hover:text-white text-sm transition-colors inline-flex items-center gap-2 group"

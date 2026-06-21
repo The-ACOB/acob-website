@@ -143,7 +143,7 @@ export default function Resources() {
                 Register for ACOB to unlock exclusive study materials, mentorship sessions, and expert guidance.
               </p>
               <a
-                href="https://makeform.ai/f/2u09IMK6"
+                href="/enroll"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-semibold rounded-lg transition-all"

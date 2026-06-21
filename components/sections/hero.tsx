@@ -119,7 +119,7 @@ export default function Hero() {
           className="flex flex-col sm:flex-row gap-5 justify-center pt-6"
         >
           <Link 
-            href="https://makeform.ai/f/2u09IMK6" 
+            href="/enroll" 
             target="_blank"
             rel="noopener noreferrer"
             className="btn-primary group flex items-center justify-center gap-2 px-10 py-4 text-lg"

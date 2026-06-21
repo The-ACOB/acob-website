@@ -51,7 +51,7 @@ export default function Navbar() {
             ))}
             <motion.div whileHover={{ y: -2 }}>
               <Link
-                href="https://makeform.ai/f/2u09IMK6"
+                href="/enroll"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn-primary px-6 py-2.5 text-sm"
@@ -92,7 +92,7 @@ export default function Navbar() {
                   </Link>
                 ))}
                 <Link
-                  href="https://makeform.ai/f/2u09IMK6"
+                  href="/enroll"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsOpen(false)}
