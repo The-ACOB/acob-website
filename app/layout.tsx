@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from "@vercel/analytics/next"
 import { Geist, Geist_Mono, Outfit } from 'next/font/google'
+import { Analytics } from '@vercel/analytics/next'
 import Navbar from '@/components/navbar'
 import Footer from '@/components/footer'
 import ScrollToTop from '@/components/scroll-to-top'
@@ -106,6 +107,7 @@ export default function RootLayout({
         {children}
         <ScrollToTop />
         <Footer />
+        <Analytics />
       </body>
     </html>
   )
