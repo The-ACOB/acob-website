@@ -40,7 +40,7 @@ export default function Footer() {
                 <Facebook size={20} />
               </a>
               <a
-                href="mailto:official.acobd@gmail.com"
+                href="mailto:reachappliedcognitio@gmail.com"
                 className="p-3 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-white/60 hover:text-cyan-400 transition-all duration-300"
                 title="Email"
               >
@@ -96,7 +96,7 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
-                <a href="mailto:official.acobd@gmail.com" className="text-white/60 hover:text-white text-sm transition-colors inline-flex items-center gap-2 group">
+                <a href="mailto:reachappliedcognitio@gmail.com" className="text-white/60 hover:text-white text-sm transition-colors inline-flex items-center gap-2 group">
                   <span className="group-hover:translate-x-1 transition-transform">Get Support</span>
                 </a>
               </li>

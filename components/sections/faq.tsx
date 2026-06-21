@@ -232,7 +232,7 @@ export default function FAQ() {
               <div className="mt-12 pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-center gap-8 text-sm text-white/60">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-cyan-400" />
-                  <span>Email: official.acobd@gmail.com</span>
+                  <span>Email: reachappliedcognitio@gmail.com</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-purple-400" />

@@ -24,7 +24,7 @@ const leadershipTeam = [
     imagePosition: 'center 35%',
     imageScale: 1.05,
     socials: {
-      email: 'mailto:official.acobd@gmail.com',
+      email: 'mailto:reachappliedcognitio@gmail.com',
     },
   },
   {
