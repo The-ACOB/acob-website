@@ -108,11 +108,21 @@ export default function Footer() {
         <div className="border-t border-white/10 pt-12">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
             <p className="text-white/40 text-xs sm:text-sm">
-              © 2024 Applied Cognitio Olympiad Bangladesh. All rights reserved.
+              © 2025-2026 Applied Cognitio Olympiad Bangladesh. All rights reserved.
             </p>
-            <p className="text-white/40 text-xs sm:text-sm">
-              Built with excellence by{' '}
-              <span className="font-semibold text-white/60">Glitched Tech</span>
+            <p className="text-white/40 text-xs sm:text-sm tracking-wide">
+              A joint production by{' '}
+              <span className="font-semibold text-white/60">ACOB</span>
+              {' '} & {' '}
+              <Link 
+                href="https://glitched-tech.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative inline-block font-semibold text-white/60 hover:text-cyan-400 transition-colors duration-300 group"
+              >
+                Glitched Tech
+                <span className="absolute bottom-0 left-0 w-0 h-[1px] bg-gradient-to-r from-cyan-400 to-purple-400 transition-all duration-300 group-hover:w-full" />
+              </Link>
             </p>
           </div>
         </div>
