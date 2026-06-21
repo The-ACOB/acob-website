@@ -11,62 +11,20 @@ export default function TeamClient() {
     message: '',
   });
   
-  const [file, setFile] = useState<File | null>(null);
-  const [fileName, setFileName] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
-      setFileName(selectedFile.name);
-    }
-  };
-
-  // Converts uploaded document into a Base64 string for the Sheets payload stream
-  const convertFileToBase64 = (file: File): Promise<{ base64: string; mimeType: string }> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Strip out metadata signature scheme prefix (e.g., "data:application/pdf;base64,")
-        const base64Data = result.split(',')[1];
-        resolve({
-          base64: base64Data,
-          mimeType: file.type,
-        });
-      };
-      reader.onerror = (error) => reject(error);
-    });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus('loading');
 
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwAgSobMmNcjAMy2ozNBxNMYko1O_BXSjBYbBjIF6V9om-OmKOZU27tE02GCZGl_qFnfg/exec';
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz6UYvfW7DUd2AetGmLlVVV8o-IOsM8wIy9LRpA_vCSLnRkzVjPO71KxFSQJ9f-HV0HoQ/exec';
 
     try {
-      let fileData = { base64: '', mimeType: '', name: '' };
-
-      // Convert attached CV file array if present
-      if (file) {
-        const encoded = await convertFileToBase64(file);
-        fileData = {
-          base64: encoded.base64,
-          mimeType: encoded.mimeType,
-          name: fileName,
-        };
-      }
-
-      // Constructed payload sent to match your spreadsheet columns
       const payload = {
         name: formData.name,
         email: formData.email,
         position: formData.position,
         message: formData.message,
-        file: fileData.base64 ? fileData : null,
       };
 
       // Sending as plain text guarantees browsers don't trigger restrictive CORS blockades
@@ -79,8 +37,6 @@ export default function TeamClient() {
       setStatus('success');
       // State clearing sequence loop
       setFormData({ name: '', email: '', position: '', message: '' });
-      setFile(null);
-      setFileName('');
     } catch (error) {
       console.error('Submission error:', error);
       setStatus('error');
@@ -169,7 +125,7 @@ export default function TeamClient() {
                     </div>
                     <h3 className="text-2xl font-semibold text-white">Application Received!</h3>
                     <p className="text-sm text-white/70 max-w-sm mx-auto leading-relaxed">
-                      Thank you for applying. Your profile and CV have been safely uploaded straight to our core review committee. We will look over your details soon!
+                      Thank you for applying. Your profile has been safely uploaded straight to our core review committee. We will look over your details soon!
                     </p>
                     <button
                       onClick={() => setStatus('idle')}
@@ -232,28 +188,6 @@ export default function TeamClient() {
                           value={formData.message}
                           onChange={(e) => setFormData({...formData, message: e.target.value})}
                         />
-                      </div>
-
-                      {/* File Selection Box Input Drop Track */}
-                      <div>
-                        <label className="block text-xs font-medium uppercase tracking-wider text-white/60 mb-2">Curriculum Vitae (CV)</label>
-                        <div className="relative border-2 border-dashed border-white/10 rounded-xl p-4 text-center hover:bg-white/[0.01] hover:border-purple-500/30 transition-all cursor-pointer">
-                          <input 
-                            type="file"
-                            required
-                            accept=".pdf,.doc,.docx"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            onChange={handleFileChange}
-                          />
-                          <div className="space-y-1">
-                            <span className="text-sm text-purple-400 block font-medium">
-                              {fileName ? '✓ File loaded successfully' : 'Upload your CV / Resume'}
-                            </span>
-                            <span className="text-xs text-white/40 block">
-                              {fileName ? fileName : 'Accepts PDF, DOCX formats up to 10MB'}
-                            </span>
-                          </div>
-                        </div>
                       </div>
 
                       {/* Execution Button Tracker */}
