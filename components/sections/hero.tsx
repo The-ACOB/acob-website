@@ -1,6 +1,149 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { ChevronDown, ArrowRight, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.12,
+      delayChildren: 0.2,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] }, // Ultra-smooth ease-out
+  },
+};
+
+export default function Hero() {
+  return (
+    <section className="relative min-h-screen w-full overflow-hidden bg-black flex flex-col items-center justify-center pt-32 pb-20">
+      
+      {/* Premium Animated Background with Ambient Lighting */}
+      <div className="absolute inset-0 z-0 select-none pointer-events-none">
+        {/* Deep mesh gradient background base */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-purple-950/40 via-neutral-950 to-black" />
+        
+        {/* Modern grid overlay for depth */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
+
+        {/* Ambient Blurred Orbs */}
+        <motion.div
+          animate={{
+            x: [0, 40, -40, 0],
+            y: [0, -30, 30, 0],
+            scale: [1, 1.05, 0.95, 1],
+          }}
+          transition={{
+            duration: 15,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+          className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-purple-500/10 rounded-full blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            x: [0, -30, 30, 0],
+            y: [0, 40, -40, 0],
+          }}
+          transition={{
+            duration: 18,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+          className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[100px]"
+        />
+      </div>
+
+      {/* Content Container */}
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="relative z-10 px-6 max-w-5xl mx-auto text-center space-y-8"
+      >
+        {/* Premium Badge */}
+        <motion.div variants={itemVariants} className="flex justify-center">
+          <motion.div
+            whileHover={{ scale: 1.02, translateY: -1 }}
+            className="flex items-center gap-2 px-4 py-1.5 bg-neutral-900/60 border border-neutral-800 hover:border-purple-500/50 rounded-full backdrop-blur-xl transition-all duration-300 cursor-default shadow-2xl group"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400 group-hover:rotate-12 transition-transform duration-300" />
+            <p className="text-xs font-medium tracking-wide text-neutral-300 uppercase">
+              Bangladesh&apos;s Premier Academic Olympiad
+            </p>
+          </motion.div>
+        </motion.div>
+
+        {/* Main Heading */}
+        <motion.div variants={itemVariants}>
+          <h1 className="text-5xl sm:text-7xl lg:text-8xl font-bold text-white tracking-tight leading-[1.05] mb-2 selection:bg-purple-500/30">
+            Applied Cognitio
+            <br />
+            <span className="bg-gradient-to-r from-purple-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent drop-shadow-sm">
+              Olympiad Bangladesh
+            </span>
+          </h1>
+        </motion.div>
+
+        {/* Premium Subheading */}
+        <motion.div variants={itemVariants}>
+          <p className="text-lg lg:text-xl text-neutral-400 max-w-2xl mx-auto leading-relaxed font-normal tracking-wide">
+            Foster critical thinking, problem-solving excellence, and intellectual innovation. Join Bangladesh&apos;s most competitive academic platform for exceptional minds.
+          </p>
+        </motion.div>
+
+        {/* CTA Buttons */}
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-col sm:flex-row gap-4 justify-center pt-4"
+        >
+          <Link 
+            href="/enroll" 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary group flex items-center justify-center gap-2 px-8 py-3.5 text-base font-medium rounded-xl transition-all duration-300 shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20"
+          >
+            Join Our Waitlist
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
+          </Link>
+          <Link 
+            href="/contact" 
+            className="btn-secondary px-8 py-3.5 text-base font-medium rounded-xl transition-all duration-300 bg-neutral-950/40 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-white"
+          >
+            Explore More
+          </Link>
+        </motion.div>
+      </motion.div>
+
+      {/* Scroll Indicator */}
+      <motion.div
+        animate={{ y: [0, 8, 0] }}
+        transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+        className="absolute bottom-8 z-10"
+      >
+        <ChevronDown className="w-6 h-6 text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer" />
+      </motion.div>
+    </section>
+  );
+}
+
+{/* 
+
+  Initial Looks
+  
+  'use client';
+
+import { motion } from 'framer-motion';
 import { ChevronDown, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,11 +170,9 @@ const itemVariants = {
 export default function Hero() {
   return (
     <section className="relative min-h-screen w-full overflow-hidden bg-black flex flex-col items-center justify-center pt-32 pb-20">
-      {/* Premium Animated Background with Parallax */}
       <div className="absolute inset-0 z-0">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-950/50 via-black to-cyan-950/40" />
-        
-        {/* Animated background orbs with enhanced motion */}
+
         <motion.div
           animate={{
             x: [0, 80, -40, 0],
@@ -59,7 +200,6 @@ export default function Hero() {
           className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-3xl"
         />
 
-        {/* Additional subtle orb */}
         <motion.div
           animate={{
             x: [0, 40, -60, 0],
@@ -74,16 +214,12 @@ export default function Hero() {
         />
       </div>
 
-      {/* Content Container */}
       <motion.div
         variants={containerVariants}
         initial="hidden"
         animate="visible"
         className="relative z-10 px-6 max-w-5xl mx-auto text-center space-y-10"
       >
-
-
-        {/* Premium Badge */}
         <motion.div variants={itemVariants} className="flex justify-center">
           <motion.div
             whileHover={{ scale: 1.05 }}
@@ -95,7 +231,6 @@ export default function Hero() {
           </motion.div>
         </motion.div>
 
-        {/* Main Heading */}
         <motion.div variants={itemVariants}>
           <h1 className="text-4xl sm:text-6xl lg:text-8xl font-bold text-white leading-tight mb-4">
             Applied Cognitio
@@ -106,20 +241,18 @@ export default function Hero() {
           </h1>
         </motion.div>
 
-        {/* Premium Subheading */}
         <motion.div variants={itemVariants}>
           <p className="text-xl lg:text-2xl text-white/80 max-w-3xl mx-auto leading-relaxed font-light">
             Foster critical thinking, problem-solving excellence, and intellectual innovation. Join Bangladesh&apos;s most competitive academic platform for exceptional minds.
           </p>
         </motion.div>
 
-        {/* CTA Buttons */}
         <motion.div
           variants={itemVariants}
           className="flex flex-col sm:flex-row gap-5 justify-center pt-6"
         >
-          <Link 
-            href="/enroll" 
+          <Link
+            href="/enroll"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-primary group flex items-center justify-center gap-2 px-10 py-4 text-lg"
@@ -127,15 +260,13 @@ export default function Hero() {
             Join Our Waitlist
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </Link>
+
           <Link href="/contact" className="btn-secondary px-10 py-4 text-lg">
             Explore More
           </Link>
         </motion.div>
-
-
       </motion.div>
 
-      {/* Scroll Indicator */}
       <motion.div
         animate={{ y: [0, 12, 0] }}
         transition={{ repeat: Infinity, duration: 2.5, ease: 'easeInOut' }}
@@ -146,3 +277,5 @@ export default function Hero() {
     </section>
   );
 }
+  
+  */}
