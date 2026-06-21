@@ -215,10 +215,10 @@ export default function JobBoard() {
             how you&apos;d like to contribute.
           </p>
           <a
-            href="mailto:careers@acobd.com"
+            href="mailto:reachappliedcognitio@gmail.com"
             className="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 transition-colors font-semibold"
           >
-            careers@acobd.com
+            reachappliedcognitio@gmail.com
             <ExternalLink size={16} />
           </a>
         </motion.div>
