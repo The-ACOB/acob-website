@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import { Geist, Geist_Mono, Outfit } from 'next/font/google'
 import Navbar from '@/components/navbar'
 import Footer from '@/components/footer'
@@ -106,6 +107,7 @@ export default function RootLayout({
         {children}
         <ScrollToTop />
         <Footer />
+        <SpeedInsights />
       </body>
     </html>
   )
