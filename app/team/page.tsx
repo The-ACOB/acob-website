@@ -35,7 +35,7 @@ const executiveBoard = [
 
 export default function TeamPage() {
   // FEATURE FLAG: Switch between private placeholder or live display roster
-  const showTeam = true;
+  const showTeam = false;
 
   return (
     <PageTransition>
