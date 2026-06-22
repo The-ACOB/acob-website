@@ -120,14 +120,15 @@ function StatCard({ stat, index }: { stat: typeof stats[0]; index: number }) {
 
 export default function Stats() {
   return (
-    <section className="relative py-32 px-6 bg-black overflow-hidden">
+    // Lowered top/bottom padding constraints to seamlessly align section dividers
+    <section className="relative pt-16 pb-20 px-6 bg-black overflow-hidden">
       {/* Background ambient glow setup */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-purple-950/5 rounded-full blur-[180px] pointer-events-none select-none" />
 
-      <div className="relative z-10 max-w-5xl mx-auto">
-        {/* Header Section */}
+      <div className="relative z-10 max-w-7xl mx-auto">
+        {/* Header Section - Adjusted down from mb-20 to mb-12 */}
         <motion.div
-          className="text-center mb-20 space-y-4"
+          className="text-center mb-12 space-y-3"
           initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -140,7 +141,7 @@ export default function Stats() {
           <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-white">
             Our <span className="bg-gradient-to-r from-purple-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent">Journey</span>
           </h2>
-          <p className="text-base md:text-lg text-neutral-400 max-w-2xl mx-auto leading-relaxed font-normal">
+          <p className="text-sm md:text-base text-neutral-400 max-w-xl mx-auto leading-relaxed font-normal">
             Building Bangladesh&apos;s most innovative academic competition platform with excellence at its core.
           </p>
         </motion.div>
@@ -161,7 +162,6 @@ export default function Stats() {
     </section>
   );
 }
-
 
 {/*
 

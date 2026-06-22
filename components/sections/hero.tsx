@@ -26,7 +26,8 @@ const itemVariants = {
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen w-full overflow-hidden bg-black flex flex-col items-center justify-center pt-32 pb-20">
+    // Adjusted padding to seamlessly sync with the compact sections downstream
+    <section className="relative min-h-screen w-full overflow-hidden bg-black flex flex-col items-center justify-center pt-28 pb-16">
       
       {/* Premium Animated Background with Ambient Lighting */}
       <div className="absolute inset-0 z-0 select-none pointer-events-none">
@@ -69,7 +70,7 @@ export default function Hero() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="relative z-10 px-6 max-w-5xl mx-auto text-center space-y-8"
+        className="relative z-10 px-6 max-w-5xl mx-auto text-center space-y-6"
       >
         {/* Premium Badge */}
         <motion.div variants={itemVariants} className="flex justify-center">
@@ -97,7 +98,7 @@ export default function Hero() {
 
         {/* Premium Subheading */}
         <motion.div variants={itemVariants}>
-          <p className="text-lg lg:text-xl text-neutral-400 max-w-2xl mx-auto leading-relaxed font-normal tracking-wide">
+          <p className="text-base sm:text-lg text-neutral-400 max-w-2xl mx-auto leading-relaxed font-normal tracking-wide">
             Foster critical thinking, problem-solving excellence, and intellectual innovation. Join Bangladesh&apos;s most competitive academic platform for exceptional minds.
           </p>
         </motion.div>
@@ -105,7 +106,7 @@ export default function Hero() {
         {/* CTA Buttons */}
         <motion.div
           variants={itemVariants}
-          className="flex flex-col sm:flex-row gap-4 justify-center pt-4"
+          className="flex flex-col sm:flex-row gap-4 justify-center pt-2"
         >
           <Link 
             href="/enroll" 
@@ -129,7 +130,7 @@ export default function Hero() {
       <motion.div
         animate={{ y: [0, 8, 0] }}
         transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
-        className="absolute bottom-8 z-10"
+        className="absolute bottom-6 z-10"
       >
         <ChevronDown className="w-6 h-6 text-neutral-500 hover:text-neutral-300 transition-colors cursor-pointer" />
       </motion.div>

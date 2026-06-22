@@ -140,14 +140,15 @@ function BenefitCard({
 
 export default function Benefits() {
   return (
-    <section className="relative py-32 px-6 bg-black overflow-hidden">
+    // Lowered top/bottom padding constraints to seamlessly align section dividers
+    <section className="relative pt-16 pb-20 px-6 bg-black overflow-hidden">
       {/* Background ambient lighting */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-950/5 rounded-full blur-[180px] pointer-events-none select-none" />
 
       <div className="max-w-5xl mx-auto">
-        {/* Section Header */}
+        {/* Section Header - Adjusted down from mb-24 to mb-14 */}
         <motion.div
-          className="text-center mb-24 space-y-4"
+          className="text-center mb-14 space-y-3"
           initial={{ opacity: 0, y: 15 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -156,7 +157,7 @@ export default function Benefits() {
           <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-white">
             Why Join <span className="bg-gradient-to-r from-cyan-400 via-indigo-200 to-purple-400 bg-clip-text text-transparent">ACOB</span>
           </h2>
-          <p className="text-base md:text-lg text-neutral-400 max-w-2xl mx-auto leading-relaxed font-normal">
+          <p className="text-sm md:text-base text-neutral-400 max-w-xl mx-auto leading-relaxed font-normal">
             Transform your potential through rigorous academic competition and professional growth opportunities.
           </p>
         </motion.div>
