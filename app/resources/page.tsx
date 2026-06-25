@@ -93,15 +93,6 @@ export default function Resources() {
 
         <section className="relative min-h-[45vh] w-full flex flex-col items-center justify-center pt-32 sm:pt-40 pb-12 sm:pb-16 z-10">
           <div className="relative px-4 sm:px-6 max-w-4xl mx-auto text-center space-y-4 sm:space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-950 border border-neutral-800 text-xs text-neutral-400 tracking-wider uppercase backdrop-blur-md"
-            >
-              <Sparkles size={12} className="text-cyan-400 animate-pulse" />
-              <span>Knowledge Matrix</span>
-            </motion.div>
 
             <motion.h1 
               initial={{ opacity: 0, y: 15 }}

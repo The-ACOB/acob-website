@@ -83,10 +83,6 @@ export default function TeamClient() {
         {/* Cinematic Header Block */}
         <section className="relative w-full pt-36 pb-12 text-center z-10 px-4 select-none">
           <div className="space-y-4 max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900/60 border border-neutral-800/80 text-xs text-cyan-400 font-medium cursor-default">
-              <Sparkles size={11} className="text-purple-400 animate-pulse" />
-              <span>Careers & Placements</span>
-            </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight cursor-default">
               Join Our <span className="bg-gradient-to-r from-purple-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent brightness-110">Team</span>
             </h1>

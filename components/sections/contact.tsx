@@ -135,10 +135,6 @@ export default function ContactSection() {
           transition={{ duration: 0.5 }}
           viewport={{ once: true, margin: "-100px" }}
         >
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/40 border border-zinc-800/60 text-[11px] text-zinc-400 font-medium cursor-default tracking-wide">
-            <Sparkles size={10} className="text-purple-400/80" />
-            <span>Communications</span>
-          </div>
           <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white">
             Let&apos;s <span className="bg-gradient-to-r from-purple-400 via-indigo-200 to-cyan-400 bg-clip-text text-transparent brightness-110">Connect</span>
           </h2>
