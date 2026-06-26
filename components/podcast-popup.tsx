@@ -108,7 +108,7 @@ export default function PodcastPopup() {
               {/* Interactive Call-To-Action Button Controls */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
                 <Link
-                  href="/resources?tab=podcast"
+                  href="/resources#podcast"
                   onClick={handleClose}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-semibold text-sm rounded-xl shadow-xl hover:shadow-cyan-500/10 transition-all duration-300 border border-white/10 text-center group"
                 >

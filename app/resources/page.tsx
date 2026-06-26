@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageTransition from '@/components/page-transition';
 import { 
@@ -130,21 +129,19 @@ const resources = [
 ];
 
 export default function Resources() {
-  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedVideo, setSelectedVideo] = useState<string | null>('fcmobvnqsMk');
   useEffect(() => {
-    const tab = searchParams.get('tab');
+    if (window.location.hash === '#podcast') {
+      const podcastIndex = resources.findIndex(
+        (resource) => resource.id === 'podcast'
+      );
 
-    if (!tab) return;
-
-    const index = resources.findIndex(resource => resource.id === tab);
-
-    if (index !== -1) {
-      setActiveTab(index);
+      if (podcastIndex !== -1) {
+        setActiveTab(podcastIndex);
+      }
     }
-  }, [searchParams]);
-
+  }, []);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>('fcmobvnqsMk');
   const currentCategory = resources[activeTab];
   const isCurrentTabLocked = TAB_LOCKS[currentCategory.id as keyof typeof TAB_LOCKS] ?? false;
 
