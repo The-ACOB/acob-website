@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import PageTransition from '@/components/page-transition';
 import { 
@@ -129,8 +130,20 @@ const resources = [
 ];
 
 export default function Resources() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(0);
   const [selectedVideo, setSelectedVideo] = useState<string | null>('fcmobvnqsMk');
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+
+    if (!tab) return;
+
+    const index = resources.findIndex(resource => resource.id === tab);
+
+    if (index !== -1) {
+      setActiveTab(index);
+    }
+  }, [searchParams]);
 
   const currentCategory = resources[activeTab];
   const isCurrentTabLocked = TAB_LOCKS[currentCategory.id as keyof typeof TAB_LOCKS] ?? false;

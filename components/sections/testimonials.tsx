@@ -6,7 +6,7 @@ import { Star, Quote, Sparkles } from 'lucide-react';
 const testimonials = [
   {
     name: 'Aisha Rahman',
-    role: 'ACOB 2024 Grand Prize Winner',
+    role: 'ACOB 2025Grand Prize Winner',
     message: 'ACOB transformed my approach to problem-solving. The competition was rigorous, but the experience was invaluable. It opened doors I never knew existed.',
     rating: 5,
     university: 'BUET',
@@ -20,7 +20,7 @@ const testimonials = [
   },
   {
     name: 'Fatima Zahra',
-    role: 'ACOB 2024 Finalist',
+    role: 'ACOB 2025Finalist',
     message: 'The quality of problems and the learning environment are exceptional. ACOB is not just a competition—it\'s a launchpad for ambitious students.',
     rating: 5,
     university: 'SUST',
@@ -174,7 +174,7 @@ import { Star } from 'lucide-react';
 const testimonials = [
   {
     name: 'Aisha Rahman',
-    role: 'ACOB 2024 Grand Prize Winner',
+    role: 'ACOB 2025Grand Prize Winner',
     message: 'ACOB transformed my approach to problem-solving. The competition was rigorous, but the experience was invaluable. It opened doors I never knew existed.',
     rating: 5,
     university: 'BUET',
@@ -188,7 +188,7 @@ const testimonials = [
   },
   {
     name: 'Fatima Zahra',
-    role: 'ACOB 2024 Finalist',
+    role: 'ACOB 2025Finalist',
     message: "The quality of problems and the learning environment are exceptional. ACOB is not just a competition—it's a launchpad for ambitious students.",
     rating: 5,
     university: 'SUST',

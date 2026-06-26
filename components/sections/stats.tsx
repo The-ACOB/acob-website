@@ -24,7 +24,7 @@ const stats = [
     description: 'Successfully conducted this year',
   },
   {
-    number: '2024',
+    number: '2025',
     label: 'Year Founded',
     icon: Rocket,
     description: "Launching Bangladesh's premier academic olympiad",
