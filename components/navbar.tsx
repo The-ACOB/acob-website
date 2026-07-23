@@ -257,7 +257,7 @@ export default function Navbar() {
                   />
 
                   <span className="relative z-10">
-                    Join Our Waitlist
+                    Join Waitlist
                   </span>
                 </Link>
               </div>
