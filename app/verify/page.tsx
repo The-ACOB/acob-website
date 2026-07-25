@@ -177,12 +177,24 @@ export default function VerifyCertificatePage() {
                         </div>
                       </div>
                     </div>
+                    
+                    <div className="pt-5 border-t border-white/5 flex items-center justify-between">
+                      <Link 
+                        href={`/certificates/${certificate.certificate_id}`}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg hover:shadow-purple-500/25"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>View Full Official Certificate</span>
+                      </Link>
+
+                      <span className="text-xs text-neutral-500 hidden sm:inline">Direct Certificate Link Available</span>
+                    </div>
                   </div>
 
                   {/* QR Code */}
                   <div className="flex flex-col items-center justify-center bg-white p-4 rounded-2xl shrink-0 shadow-lg border border-white/20">
                     <QRCode
-                      value={typeof window !== 'undefined' ? `${window.location.origin}/verify?id=${certificate.certificate_id}` : certificate.certificate_id}
+                      value={typeof window !== 'undefined' ? `${window.location.origin}/certificates/${certificate.certificate_id}` : `https://acob.vercel.app/certificates/${certificate.certificate_id}`}
                       size={120}
                       level="H"
                     />

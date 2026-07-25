@@ -262,14 +262,21 @@ export default function CertificateAdminPage({ params }: Props) {
                       <td className="py-4 px-6 text-neutral-300">{cert.event_name}</td>
                       <td className="py-4 px-6 text-amber-300 font-medium">{cert.achievement}</td>
                       <td className="py-4 px-6 text-neutral-400 text-xs">{cert.issue_date}</td>
-                      <td className="py-4 px-6 text-right">
+                      <td className="py-4 px-6 text-right flex items-center justify-end gap-2">
+                        <Link
+                          href={`/certificates/${cert.certificate_id}`}
+                          target="_blank"
+                          className="inline-flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-500/10 border border-purple-500/20 px-2.5 py-1.5 rounded-lg transition-all"
+                        >
+                          <span>View</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </Link>
                         <Link
                           href={`/verify?id=${cert.certificate_id}`}
                           target="_blank"
-                          className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-lg transition-all"
+                          className="inline-flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1.5 rounded-lg transition-all"
                         >
                           <span>Verify</span>
-                          <ExternalLink className="w-3 h-3" />
                         </Link>
                       </td>
                     </tr>
