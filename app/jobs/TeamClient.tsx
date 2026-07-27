@@ -272,7 +272,7 @@ export default function TeamClient() {
                 <div className="bg-neutral-950/10 border border-dashed border-neutral-800/80 rounded-2xl p-6 flex flex-col justify-between gap-6 select-none opacity-80 hover:opacity-100 transition-opacity">
                   <div className="space-y-3">
                     <span className="text-[9px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-neutral-800 text-neutral-400 cursor-default">Custom Track</span>
-                    <h4 className="text-lg font-bold tracking-tight text-neutral-300 cursor-default">Other Vectors?</h4>
+                    <h4 className="text-lg font-bold tracking-tight text-neutral-300 cursor-default">Other Positions?</h4>
                     <p className="text-xs text-neutral-500 font-light leading-relaxed cursor-default">
                       We are always looking for premium researchers, backend developers, visual content curators, and community architects.
                     </p>
