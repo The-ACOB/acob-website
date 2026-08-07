@@ -1,61 +1,80 @@
-import type { Metadata, Viewport } from 'next'
-import { Analytics } from "@vercel/analytics/next"
-import { Geist, Geist_Mono, Outfit } from 'next/font/google'
-import Navbar from '@/components/navbar'
-import Footer from '@/components/footer'
-import ScrollToTop from '@/components/scroll-to-top'
-import PodcastPopup from '@/components/podcast-popup' // 👈 Add global popup import here
-import './globals.css'
+import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
+import { Geist, Geist_Mono, Outfit } from "next/font/google";
+import Navbar from "@/components/navbar";
+import Footer from "@/components/footer";
+import ScrollToTop from "@/components/scroll-to-top";
+import PodcastPopup from "@/components/podcast-popup"; // 👈 Add global popup import here
+import "./globals.css";
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: '#000000',
-}
+  themeColor: "#000000",
+};
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
-const _outfit = Outfit({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"] });
+const _outfit = Outfit({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 export const metadata: Metadata = {
-  title: 'ACOB | Applied Cognitio Olympiad Bangladesh - Premier Academic Competition',
-  description: 'Bangladesh\'s premier academic competition fostering critical thinking, problem-solving excellence, and intellectual innovation. Join ACOB to challenge your cognitive limits.',
-  keywords: ['olympiad', 'competition', 'education', 'stem', 'bangladesh', 'cognitio', 'academic excellence', 'critical thinking', 'acob', 'acobd', 'applied cognitio'],
-  authors: [{ name: 'ACOB Team' }],
-  metadataBase: new URL('https://acobd.netlify.app'),
+  title:
+    "ACOB | Applied Cognitio Olympiad Bangladesh - Premier Academic Competition",
+  description:
+    "Bangladesh's premier academic competition fostering critical thinking, problem-solving excellence, and intellectual innovation. Join ACOB to challenge your cognitive limits.",
+  keywords: [
+    "olympiad",
+    "competition",
+    "education",
+    "stem",
+    "bangladesh",
+    "cognitio",
+    "academic excellence",
+    "critical thinking",
+    "acob",
+    "acobd",
+    "applied cognitio",
+  ],
+  authors: [{ name: "ACOB Team" }],
+  metadataBase: new URL("https://theacob.com"),
   alternates: {
-    canonical: '/',
+    canonical: "/",
   },
   verification: {
-    google: 'Ko1DxraRMfkFIx5bxrDZ9yX4btw_ixwGUqRzbc_kVTk',
+    google: "Ko1DxraRMfkFIx5bxrDZ9yX4btw_ixwGUqRzbc_kVTk",
   },
-  generator: 'ACOB Platform',
+  generator: "ACOB Platform",
   icons: {
-    icon: '/icon.png',
-    apple: '/apple-icon.png',
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
   },
   openGraph: {
-    title: 'ACOB - Applied Cognitio Olympiad Bangladesh',
-    description: 'Fostering intellectual innovation and academic excellence among Bangladesh\'s brightest minds.',
-    type: 'website',
-    locale: 'en_US',
-    url: 'https://acobd.netlify.app',
-    siteName: 'ACOB',
+    title: "ACOB - Applied Cognitio Olympiad Bangladesh",
+    description:
+      "Fostering intellectual innovation and academic excellence among Bangladesh's brightest minds.",
+    type: "website",
+    locale: "en_US",
+    url: "https://theacob.com",
+    siteName: "ACOB",
     images: [
       {
-        url: '/logo.png',
+        url: "/logo.png",
         width: 1200,
         height: 630,
-        alt: 'ACOB Logo',
+        alt: "ACOB Logo",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'ACOB - Applied Cognitio Olympiad Bangladesh',
-    description: 'Bangladesh\'s premier academic competition for intellectual innovation.',
-    images: ['/logo.png'],
+    card: "summary_large_image",
+    title: "ACOB - Applied Cognitio Olympiad Bangladesh",
+    description:
+      "Bangladesh's premier academic competition for intellectual innovation.",
+    images: ["/logo.png"],
   },
   robots: {
     index: true,
@@ -63,38 +82,38 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
-}
+};
 
 const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'Applied Cognitio Olympiad Bangladesh',
-  alternateName: 'ACOB',
-  url: 'https://acobd.netlify.app',
-  logo: 'https://acobd.netlify.app/logo.png',
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Applied Cognitio Olympiad Bangladesh",
+  alternateName: "ACOB",
+  url: "https://theacob.com",
+  logo: "https://theacob.com/logo.png",
   contactPoint: {
-    '@type': 'ContactPoint',
-    telephone: '',
-    contactType: 'customer service',
-    email: 'contact@acobd.com',
-    availableLanguage: ['English', 'Bengali'],
+    "@type": "ContactPoint",
+    telephone: "",
+    contactType: "customer service",
+    email: "contact@acobd.com",
+    availableLanguage: ["English", "Bengali"],
   },
   sameAs: [
-    'https://www.facebook.com/profile.php?id=61582673745324',
-    'https://linkedin.com/company/acobd',
-    'https://instagram.com/acobd',
+    "https://www.facebook.com/profile.php?id=61582673745324",
+    "https://linkedin.com/company/acobd",
+    "https://instagram.com/acobd",
   ],
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
     <html lang="en" className="dark" data-scroll-behavior="smooth">
@@ -104,15 +123,15 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         <Navbar />
-        
+
         {/* Rendered sitewide, listening contextually to users navigating on home or materials paths */}
         <PodcastPopup />
-        
+
         {children}
         <ScrollToTop />
         <Footer />
         <Analytics />
       </body>
     </html>
-  )
+  );
 }
