@@ -3,4 +3,4 @@ Allow: /
 Disallow: /_next/
 Disallow: /api/
 
-Sitemap: https://theacob.com/sitemap.xml
+Sitemap: https://www.theacob.com/sitemap.xml

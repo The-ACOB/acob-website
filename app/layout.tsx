@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     "applied cognitio",
   ],
   authors: [{ name: "ACOB Team" }],
-  metadataBase: new URL("https://theacob.com"),
+  metadataBase: new URL("https://www.theacob.com"),
   alternates: {
     canonical: "/",
   },
@@ -58,7 +58,7 @@ export const metadata: Metadata = {
       "Fostering intellectual innovation and academic excellence among Bangladesh's brightest minds.",
     type: "website",
     locale: "en_US",
-    url: "https://theacob.com",
+    url: "https://www.theacob.com",
     siteName: "ACOB",
     images: [
       {
@@ -94,8 +94,8 @@ const jsonLd = {
   "@type": "Organization",
   name: "Applied Cognitio Olympiad Bangladesh",
   alternateName: "ACOB",
-  url: "https://theacob.com",
-  logo: "https://theacob.com/logo.png",
+  url: "https://www.theacob.com",
+  logo: "https://www.theacob.com/logo.png",
   contactPoint: {
     "@type": "ContactPoint",
     telephone: "",
