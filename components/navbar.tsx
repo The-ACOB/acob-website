@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, LogOut, LayoutDashboard, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import logoImg from '@/public/only_logo_transparent-(white).png';
+import { useAuth } from '@/components/auth-provider';
+import AuthModal from '@/components/auth-modal';
 
 const navLinks = [
   { href: '/', label: 'Home' },
@@ -21,6 +23,11 @@ const navLinks = [
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -33,12 +40,28 @@ export default function Navbar() {
     };
   }, []);
 
+  const openAuth = (mode: 'login' | 'signup') => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+    setIsOpen(false);
+  };
+
+  const getAvatarUrl = () => {
+    if (user?.user_metadata?.avatar_url) return user.user_metadata.avatar_url;
+    const name = user?.user_metadata?.full_name || user?.email || 'A';
+    return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`;
+  };
+
+  const getDisplayName = () => {
+    return user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  };
+
   return (
     <>
       <nav className="fixed top-5 left-0 right-0 z-50 px-4 sm:px-6 select-none">
         <div className="max-w-7xl mx-auto relative">
           
-          {/* 10. Animated Border Glow & Dynamic Shifting Pill */}
+          {/* Animated Border Glow & Dynamic Shifting Pill */}
           <div
             className={`
               relative
@@ -80,7 +103,7 @@ export default function Navbar() {
                 href="/"
                 className="group flex items-center relative z-50 shrink-0"
               >
-                {/* 2. Floating Orb Behind the Logo */}
+                {/* Floating Orb Behind the Logo */}
                 <div
                   className="
                     absolute
@@ -100,7 +123,7 @@ export default function Navbar() {
                   "
                 />
 
-                {/* 1. Upgrade the Logo Hover Scaling Container */}
+                {/* Upgrade the Logo Hover Scaling Container */}
                 <div
                   className="
                     relative
@@ -131,7 +154,7 @@ export default function Navbar() {
               </Link>
 
               {/* Desktop Links */}
-              <div className="hidden lg:flex items-center gap-10">
+              <div className="hidden lg:flex items-center gap-8">
                 {navLinks.map((link) => (
                   <Link
                     key={link.href}
@@ -149,7 +172,7 @@ export default function Navbar() {
                       hover:-translate-y-[2px]
                     "
                   >
-                    {/* 4. Soft Glow Behind Text */}
+                    {/* Soft Glow Behind Text */}
                     <div
                       className="
                         absolute
@@ -166,7 +189,7 @@ export default function Navbar() {
                       "
                     />
 
-                    {/* 5. Animated Hover Spark */}
+                    {/* Animated Hover Spark */}
                     <div
                       className="
                         absolute
@@ -182,7 +205,7 @@ export default function Navbar() {
                       "
                     />
 
-                    {/* Text Element Wrapper (No visible line) */}
+                    {/* Text Element Wrapper */}
                     <span
                       className="
                         relative
@@ -198,68 +221,132 @@ export default function Navbar() {
                 ))}
               </div>
 
-              {/* Desktop CTA Button */}
-              <div className="hidden lg:flex items-center">
-                <Link
-                  href="/enroll"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="
-                    group
-                    relative
-                    overflow-hidden
-                    rounded-2xl
-                    border
-                    border-purple-500/20
-                    bg-black/40
-                    px-6
-                    py-3
-                    text-sm
-                    font-medium
-                    text-white
-                    backdrop-blur-xl
-                    transition-all
-                    duration-300
-                    hover:scale-[1.03]
-                    hover:border-purple-400/50
-                    hover:shadow-[0_0_35px_rgba(168,85,247,0.35)]
-                  "
-                >
-                  <div
-                    className="
-                      absolute
-                      inset-0
-                      bg-gradient-to-r
-                      from-purple-500/20
-                      to-cyan-500/20
-                      opacity-0
-                      transition-opacity
-                      duration-500
-                      group-hover:opacity-100
-                    "
-                  />
+              {/* Desktop Auth/CTA Actions */}
+              <div className="hidden lg:flex items-center gap-4">
+                {user ? (
+                  /* User Authenticated Dropdown */
+                  <div className="relative">
+                    <button
+                      onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                      className="flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] p-1.5 pr-4 text-sm text-neutral-300 transition-all hover:bg-white/[0.08] hover:border-white/20 active:scale-[0.98]"
+                    >
+                      <img
+                        src={getAvatarUrl()}
+                        alt="Avatar"
+                        className="h-8 w-8 rounded-full border border-white/20 object-cover bg-neutral-900"
+                      />
+                      <span className="font-semibold text-white max-w-[100px] truncate">
+                        {getDisplayName()}
+                      </span>
+                    </button>
 
-                  {/* 7. CTA Button Shine Sweep */}
-                  <div
-                    className="
-                      absolute
-                      -left-20
-                      top-0
-                      h-full
-                      w-10
-                      rotate-12
-                      bg-white/10
-                      blur-md
-                      transition-all
-                      duration-700
-                      group-hover:left-[140%]
-                    "
-                  />
+                    <AnimatePresence>
+                      {profileDropdownOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-30"
+                            onClick={() => setProfileDropdownOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute right-0 mt-2.5 w-56 origin-top-right rounded-2xl border border-white/10 bg-neutral-950 p-2 shadow-2xl z-40"
+                          >
+                            <div className="px-3 py-2 border-b border-white/5 mb-1.5">
+                              <p className="text-xs text-neutral-500 font-semibold">Signed in as</p>
+                              <p className="text-xs text-white truncate font-medium">{user.email}</p>
+                            </div>
 
-                  <span className="relative z-10">
-                    Join Waitlist
-                  </span>
-                </Link>
+                            <Link
+                              href="/dashboard"
+                              onClick={() => setProfileDropdownOpen(false)}
+                              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-neutral-300 transition-all hover:bg-white/[0.05] hover:text-white"
+                            >
+                              <LayoutDashboard size={16} className="text-purple-400" />
+                              Dashboard
+                            </Link>
+
+                            <button
+                              onClick={() => {
+                                setProfileDropdownOpen(false);
+                                signOut();
+                              }}
+                              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-red-400 transition-all hover:bg-red-500/[0.05]"
+                            >
+                              <LogOut size={16} />
+                              Sign Out
+                            </button>
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  /* Guest Log In & Sign Up Buttons */
+                  <>
+                    <button
+                      onClick={() => openAuth('login')}
+                      className="px-4 py-2.5 text-sm font-semibold text-neutral-300 hover:text-white transition-colors"
+                    >
+                      Log In
+                    </button>
+                    <button
+                      onClick={() => openAuth('signup')}
+                      className="
+                        group
+                        relative
+                        overflow-hidden
+                        rounded-2xl
+                        border
+                        border-purple-500/20
+                        bg-black/40
+                        px-6
+                        py-3
+                        text-sm
+                        font-semibold
+                        text-white
+                        backdrop-blur-xl
+                        transition-all
+                        duration-300
+                        hover:scale-[1.03]
+                        hover:border-purple-400/50
+                        hover:shadow-[0_0_35px_rgba(168,85,247,0.35)]
+                      "
+                    >
+                      <div
+                        className="
+                          absolute
+                          inset-0
+                          bg-gradient-to-r
+                          from-purple-500/20
+                          to-cyan-500/20
+                          opacity-0
+                          transition-opacity
+                          duration-500
+                          group-hover:opacity-100
+                        "
+                      />
+                      <div
+                        className="
+                          absolute
+                          -left-20
+                          top-0
+                          h-full
+                          w-10
+                          rotate-12
+                          bg-white/10
+                          blur-md
+                          transition-all
+                          duration-700
+                          group-hover:left-[140%]
+                        "
+                      />
+                      <span className="relative z-10">Sign Up</span>
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Mobile Menu Action Toggle Button */}
@@ -273,7 +360,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* 8. Ambient Connected Navbar Glow */}
+          {/* Ambient Connected Navbar Glow */}
           <div
             className="
               absolute
@@ -311,7 +398,7 @@ export default function Navbar() {
               lg:hidden
             "
           >
-            <div className="flex flex-col justify-center items-center h-full gap-8">
+            <div className="flex flex-col justify-center items-center h-full gap-6">
               {navLinks.map((link, index) => (
                 <motion.div
                   key={link.href}
@@ -324,7 +411,7 @@ export default function Navbar() {
                     href={link.href}
                     onClick={() => setIsOpen(false)}
                     className="
-                      text-2xl
+                      text-xl
                       font-semibold
                       text-neutral-400
                       hover:text-white
@@ -342,37 +429,103 @@ export default function Navbar() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ delay: navLinks.length * 0.05 }}
+                className="flex flex-col gap-4 w-full px-12 mt-6"
               >
-                <Link
-                  href="/enroll"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setIsOpen(false)}
-                  className="
-                    mt-8
-                    block
-                    rounded-2xl
-                    border
-                    border-purple-500/30
-                    bg-gradient-to-r
-                    from-purple-500/10
-                    to-cyan-500/10
-                    px-8
-                    py-4
-                    text-white
-                    font-semibold
-                    shadow-lg
-                    hover:border-purple-400/50
-                    transition-colors
-                  "
-                >
-                  Join Our Waitlist
-                </Link>
+                {user ? (
+                  <>
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setIsOpen(false)}
+                      className="
+                        flex justify-center items-center gap-2
+                        rounded-2xl
+                        border
+                        border-purple-500/30
+                        bg-gradient-to-r
+                        from-purple-500/10
+                        to-cyan-500/10
+                        px-8
+                        py-3.5
+                        text-white
+                        font-semibold
+                        shadow-lg
+                        transition-all
+                      "
+                    >
+                      <LayoutDashboard size={18} />
+                      Go to Dashboard
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setIsOpen(false);
+                        signOut();
+                      }}
+                      className="
+                        flex justify-center items-center gap-2
+                        rounded-2xl
+                        border
+                        border-red-500/20
+                        bg-red-500/5
+                        px-8
+                        py-3.5
+                        text-red-400
+                        font-semibold
+                        transition-all
+                      "
+                    >
+                      <LogOut size={18} />
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => openAuth('login')}
+                      className="
+                        rounded-2xl
+                        border border-white/10
+                        bg-white/[0.02]
+                        px-8
+                        py-3.5
+                        text-neutral-300
+                        font-semibold
+                        transition-all
+                        hover:bg-white/[0.05]
+                      "
+                    >
+                      Log In
+                    </button>
+                    <button
+                      onClick={() => openAuth('signup')}
+                      className="
+                        rounded-2xl
+                        bg-gradient-to-r
+                        from-purple-600
+                        to-cyan-600
+                        px-8
+                        py-3.5
+                        text-white
+                        font-semibold
+                        shadow-lg
+                        transition-all
+                      "
+                    >
+                      Sign Up
+                    </button>
+                  </>
+                )}
               </motion.div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Global Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authModalMode}
+      />
     </>
   );
 }

@@ -3,4 +3,8 @@ Allow: /
 Disallow: /_next/
 Disallow: /api/
 
+<<<<<<< HEAD
 Sitemap: https://www.theacob.com/sitemap.xml
+=======
+Sitemap: https://www.theacob.com/sitemap.xml
+>>>>>>> 539cb75 (added signup and loging and fixed seo)

@@ -134,4 +134,8 @@ export default function RootLayout({
       </body>
     </html>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 539cb75 (added signup and loging and fixed seo)
