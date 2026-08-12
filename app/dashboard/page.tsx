@@ -1,31 +1,87 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/components/auth-provider';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, BookOpen, Award, Settings, Bell, ChevronRight, LogOut, 
-  Search, ShieldCheck, Trophy, Target, Sparkles, Plus, CheckCircle, Edit3, Camera, Phone
+  ShieldCheck, Trophy, CheckCircle, Camera, Calendar, ArrowRight,
+  ExternalLink, Download, Sparkles, Lock, Key
 } from 'lucide-react';
 import Link from 'next/link';
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
-} from 'recharts';
 import { supabase } from '@/lib/supabase';
 
-// Mock dashboard statistics data
-const COGNITIVE_DATA = [
-  { name: 'Jan', score: 620 },
-  { name: 'Feb', score: 680 },
-  { name: 'Mar', score: 710 },
-  { name: 'Apr', score: 780 },
-  { name: 'May', score: 820 },
-  { name: 'Jun', score: 890 },
+// Static resources definitions
+const STUDENT_RESOURCES = [
+  {
+    category: 'Study Guides',
+    items: [
+      { title: 'ACOB Problem-Solving Framework', desc: 'Master the systematic approach to tackling complex problems.', type: 'PDF' },
+      { title: 'Critical Thinking Workbook', desc: 'Develop analytical skills with curated exercises.', type: 'PDF' },
+      { title: 'Past Papers Analysis 2023-2024', desc: 'Understand problem patterns and solution strategies.', type: 'PDF' },
+    ]
+  },
+  {
+    category: 'Video Tutorials',
+    items: [
+      { title: 'Getting Started with ACOB', desc: 'Introduction to the competition format and expectations.', type: 'Video' },
+      { title: 'Time Management Strategies', desc: 'Excel in competitive exams with smart planning.', type: 'Video' },
+      { title: 'Expert Tips & Tricks', desc: 'Learn secrets from ACOB winners.', type: 'Video' },
+    ]
+  },
+  {
+    category: 'Competition Resources',
+    items: [
+      { title: 'Sample Problems & Solutions', desc: 'Practice with actual ACOB-level problems.', type: 'Download' },
+      { title: 'Competition Rules Handbook', desc: 'Complete guide to ACOB rules and regulations.', type: 'Download' },
+      { title: 'Registration Checklist', desc: 'Everything you need before competition day.', type: 'Download' },
+    ]
+  }
+];
+
+// Mock Olympiads data
+const UPCOMING_EVENTS = [
+  {
+    id: 'acob-2026',
+    title: 'Applied Cognitio Olympiad 2026',
+    date: 'August 28, 2026',
+    category: 'National Olympiad',
+    desc: 'The premier national competition testing logic, problem-solving, and cognitive capability.',
+    syllabus: 'Logical deduction, pattern recognition, analytical word problems.'
+  },
+  {
+    id: 'cog-sci-2026',
+    title: 'Cognitive Science Challenge',
+    date: 'September 15, 2026',
+    category: 'Special Logic Event',
+    desc: 'Focuses on neuroscience foundations, cognitive linguistics, and computational psychology puzzles.',
+    syllabus: 'Intro to neuroanatomy, logical reasoning, AI & mental models.'
+  }
+];
+
+// Sample questions for practice test
+const PRACTICE_QUESTIONS = [
+  {
+    q: "If all A are B, and some B are C, which of the following MUST be true?",
+    options: ["All A are C", "Some A are C", "Some B are A", "No A are C"],
+    ans: 2
+  },
+  {
+    q: "Select the missing number in the sequence: 2, 6, 12, 20, 30, ?",
+    options: ["36", "40", "42", "48"],
+    ans: 2
+  },
+  {
+    q: "Five runners (P, Q, R, S, T) finish a race. P finishes before Q but after R. S finishes before T but after Q. Who finished last?",
+    options: ["Q", "R", "S", "T"],
+    ans: 3
+  }
 ];
 
 export default function DashboardPage() {
   const { user, signOut, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'certificates' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'certificates' | 'resources' | 'settings'>('overview');
+  
+  // Profile settings state
   const [displayName, setDisplayName] = useState('');
   const [school, setSchool] = useState('');
   const [grade, setGrade] = useState('');
@@ -35,9 +91,25 @@ export default function DashboardPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  // Security credentials state
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Dynamic user data states
+  const [registeredEvents, setRegisteredEvents] = useState<string[]>([]);
+  const [certificates, setCertificates] = useState<any[]>([]);
+  const [loadingCerts, setLoadingCerts] = useState(true);
+
+  // Quiz Modal state
+  const [isQuizOpen, setIsQuizOpen] = useState(false);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [quizFinished, setQuizFinished] = useState(false);
+
+  // Admit Card Modal state
+  const [admitCardEvent, setAdmitCardEvent] = useState<any | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -56,8 +128,38 @@ export default function DashboardPage() {
       setGrade(user.user_metadata?.grade || 'Not specified');
       setPhone(user.user_metadata?.phone || '');
       setAvatarUrl(user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.user_metadata?.full_name || user.email || '')}`);
+      setRegisteredEvents(user.user_metadata?.registered_events || []);
     }
   }, [user]);
+
+  // Load Certificates and Filter dynamically
+  useEffect(() => {
+    async function loadCertificates() {
+      if (!user) return;
+      try {
+        const { getAllCertificates } = await import('@/lib/supabase');
+        const allCerts = await getAllCertificates();
+        
+        // Filter certificates dynamically matching displayName or metadata.email
+        const userFullName = (displayName || user.user_metadata?.full_name || '').toLowerCase().trim();
+        const userEmail = (user.email || '').toLowerCase().trim();
+
+        const filtered = allCerts.filter((cert: any) => {
+          const certStudent = (cert.student_name || '').toLowerCase().trim();
+          const matchesName = userFullName && certStudent && (certStudent.includes(userFullName) || userFullName.includes(certStudent));
+          const matchesEmail = cert.metadata?.email ? (cert.metadata.email.toLowerCase().trim() === userEmail) : false;
+          return matchesName || matchesEmail;
+        });
+
+        setCertificates(filtered);
+      } catch (err) {
+        console.error('Error fetching certificates:', err);
+      } finally {
+        setLoadingCerts(false);
+      }
+    }
+    loadCertificates();
+  }, [user, displayName]);
 
   if (loading) {
     return (
@@ -85,6 +187,38 @@ export default function DashboardPage() {
     );
   }
 
+  const handleRegisterEvent = async (eventId: string) => {
+    if (registeredEvents.includes(eventId)) return;
+    
+    const updatedEvents = [...registeredEvents, eventId];
+    setRegisteredEvents(updatedEvents);
+    setMessage(null);
+
+    const localSession = localStorage.getItem('acob_mock_session');
+    if (localSession) {
+      const parsed = JSON.parse(localSession);
+      parsed.user.user_metadata = {
+        ...parsed.user.user_metadata,
+        registered_events: updatedEvents,
+      };
+      localStorage.setItem('acob_mock_session', JSON.stringify(parsed));
+      setMessage('Successfully registered for the event!');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          registered_events: updatedEvents,
+        }
+      });
+      if (error) throw error;
+      setMessage('Successfully registered for the event!');
+    } catch (err: any) {
+      setMessage(err.message || 'Error registering for event.');
+    }
+  };
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -94,7 +228,6 @@ export default function DashboardPage() {
 
     const localSession = localStorage.getItem('acob_mock_session');
     if (localSession) {
-      // Mock upload using FileReader to base64
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64data = reader.result as string;
@@ -118,27 +251,23 @@ export default function DashboardPage() {
       const fileName = `${user.id}-${Math.random()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
-      // Upload file to Supabase Storage bucket 'avatars'
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(filePath);
 
       setAvatarUrl(publicUrl);
 
-      // Update auth user metadata
       const { error: authError } = await supabase.auth.updateUser({
         data: { avatar_url: publicUrl }
       });
       if (authError) throw authError;
 
-      // Update profiles database table directly
       const { error: dbError } = await supabase
         .from('profiles')
         .update({ 
@@ -161,10 +290,8 @@ export default function DashboardPage() {
     setIsSaving(true);
     setMessage(null);
 
-    // Save to user metadata
     const localSession = localStorage.getItem('acob_mock_session');
     if (localSession) {
-      // Mock session saving
       const parsed = JSON.parse(localSession);
       parsed.user.user_metadata = {
         ...parsed.user.user_metadata,
@@ -190,7 +317,6 @@ export default function DashboardPage() {
       });
       if (authError) throw authError;
 
-      // Update public.profiles table directly as well to guarantee persistence
       const { error: dbError } = await supabase
         .from('profiles')
         .update({
@@ -227,19 +353,33 @@ export default function DashboardPage() {
 
     const localSession = localStorage.getItem('acob_mock_session');
     if (localSession) {
-      setMessage('Password updated locally (Mock)!');
+      setMessage('Password updated successfully (Mock)!');
       setIsChangingPassword(false);
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       return;
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({
+      // 1. Verify current password by trying to re-authenticate
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password: currentPassword,
+      });
+
+      if (reauthError) {
+        throw new Error('Current password is incorrect. Verification failed.');
+      }
+
+      // 2. Perform actual password update
+      const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       });
-      if (error) throw error;
+      if (updateError) throw updateError;
+
       setMessage('Password updated successfully!');
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
@@ -247,6 +387,14 @@ export default function DashboardPage() {
     } finally {
       setIsChangingPassword(false);
     }
+  };
+
+  const calculateQuizScore = () => {
+    let score = 0;
+    PRACTICE_QUESTIONS.forEach((q, idx) => {
+      if (selectedAnswers[idx] === q.ans) score++;
+    });
+    return score;
   };
 
   return (
@@ -291,7 +439,7 @@ export default function DashboardPage() {
             <div className="mt-6 space-y-3 pt-6 border-t border-white/5 text-xs text-neutral-400">
               <div className="flex justify-between">
                 <span>School:</span>
-                <span className="font-semibold text-white">{school}</span>
+                <span className="font-semibold text-white truncate max-w-[150px]">{school}</span>
               </div>
               <div className="flex justify-between">
                 <span>Grade/Level:</span>
@@ -328,8 +476,8 @@ export default function DashboardPage() {
                   : 'text-neutral-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <BookOpen size={18} />
-              Olympiads & Events
+              <Calendar size={18} />
+              My Registered Events
             </button>
 
             <button
@@ -342,6 +490,18 @@ export default function DashboardPage() {
             >
               <Award size={18} />
               My Certificates
+            </button>
+
+            <button
+              onClick={() => setActiveTab('resources')}
+              className={`flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-sm font-semibold transition-all ${
+                activeTab === 'resources' 
+                  ? 'bg-purple-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]' 
+                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BookOpen size={18} />
+              Study Resources
             </button>
 
             <button
@@ -369,6 +529,7 @@ export default function DashboardPage() {
         {/* Dashboard Panels */}
         <div className="lg:col-span-3 space-y-6">
           
+          {/* OVERVIEW PANEL */}
           {activeTab === 'overview' && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -382,7 +543,7 @@ export default function DashboardPage() {
                     Academic Center
                   </h1>
                   <p className="text-neutral-400 text-sm mt-1">
-                    Welcome back, {displayName || 'Cognitive Challenger'}. Track your learning milestone metrics.
+                    Welcome back, {displayName || 'Cognitive Challenger'}. Secure your registration and start training.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-2.5 text-xs text-neutral-400">
@@ -391,89 +552,145 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Grid Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div className="rounded-3xl border border-white/5 bg-white/[0.01] p-6">
-                  <span className="text-xs text-neutral-500 font-semibold">Active Enrolled Olympiads</span>
-                  <p className="text-3xl font-bold mt-2 text-purple-400">2</p>
-                  <span className="text-[10px] text-neutral-400 block mt-1.5">Next exam: Aug 28, 2026</span>
+              {/* Status Message */}
+              {message && (
+                <div className="flex items-center gap-2.5 rounded-2xl border border-purple-500/10 bg-purple-500/[0.03] p-4 text-sm text-purple-400 animate-fadeIn">
+                  <CheckCircle size={16} />
+                  <span>{message}</span>
                 </div>
-                <div className="rounded-3xl border border-white/5 bg-white/[0.01] p-6">
-                  <span className="text-xs text-neutral-500 font-semibold">Verified Certificates</span>
-                  <p className="text-3xl font-bold mt-2 text-cyan-400">1</p>
-                  <span className="text-[10px] text-neutral-400 block mt-1.5">National Olympiad 2026</span>
-                </div>
-                <div className="rounded-3xl border border-white/5 bg-white/[0.01] p-6">
-                  <span className="text-xs text-neutral-500 font-semibold">National Rank Percentile</span>
-                  <p className="text-3xl font-bold mt-2 text-emerald-400">Top 1.2%</p>
-                  <span className="text-[10px] text-neutral-400 block mt-1.5">Out of 12,500+ participants</span>
-                </div>
-              </div>
+              )}
 
-              {/* Recharts Analytics Chart */}
-              <div className="rounded-3xl border border-white/5 bg-white/[0.01] p-6">
-                <h3 className="font-bold text-base mb-4 flex items-center gap-2">
-                  <Target size={18} className="text-purple-400" />
-                  Cognitive Development Score
-                </h3>
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={COGNITIVE_DATA}>
-                      <defs>
-                        <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#a855f7" stopOpacity={0.4}/>
-                          <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                      <XAxis dataKey="name" stroke="#666" fontSize={11} />
-                      <YAxis stroke="#666" fontSize={11} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0c0c0c', borderColor: '#333', color: '#fff' }} />
-                      <Area type="monotone" dataKey="score" stroke="#a855f7" fillOpacity={1} fill="url(#colorScore)" strokeWidth={2} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+              {/* Upcoming events lists with Interactive functions */}
+              <h2 className="text-xl font-bold tracking-tight mt-6">Upcoming Events & Olympiads</h2>
+              
+              <div className="space-y-6">
+                {UPCOMING_EVENTS.map((event) => {
+                  const isRegistered = registeredEvents.includes(event.id);
+                  return (
+                    <div key={event.id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden transition-all hover:border-white/10 duration-300">
+                      <div className="absolute top-0 right-0 h-32 w-32 bg-purple-500/5 rounded-full blur-2xl" />
+                      
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div>
+                          <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                            isRegistered 
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                              : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                          }`}>
+                            {isRegistered ? 'Enrolled & Confirmed' : 'Registration Open'}
+                          </span>
+                          <h3 className="font-extrabold text-xl mt-3">{event.title}</h3>
+                          <p className="text-neutral-400 text-xs sm:text-sm mt-1 max-w-xl">{event.desc}</p>
+                          
+                          <div className="mt-3 bg-white/[0.02] border border-white/5 rounded-xl p-3 text-xs max-w-lg">
+                            <span className="text-neutral-500 font-semibold uppercase tracking-wider block text-[9px] mb-1">Exam Syllabus</span>
+                            <span className="text-neutral-300 font-light">{event.syllabus}</span>
+                          </div>
+                        </div>
+
+                        <div className="text-right text-xs">
+                          <span className="text-neutral-500 block">Scheduled Date</span>
+                          <span className="font-bold text-white text-sm block mt-0.5">{event.date}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 pt-4 border-t border-white/5 flex flex-wrap gap-3 items-center justify-between">
+                        <span className="text-xs text-neutral-500">Tier Category: Senior Category</span>
+                        
+                        {!isRegistered ? (
+                          <button
+                            onClick={() => handleRegisterEvent(event.id)}
+                            className="flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-semibold text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
+                          >
+                            Register for Event
+                            <ArrowRight size={14} />
+                          </button>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => {
+                                setCurrentQuestionIdx(0);
+                                setSelectedAnswers({});
+                                setQuizFinished(false);
+                                setIsQuizOpen(true);
+                              }}
+                              className="flex items-center gap-1.5 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-500/10 transition-all"
+                            >
+                              <Sparkles size={13} />
+                              Practice Test
+                            </button>
+                            <button
+                              onClick={() => setAdmitCardEvent(event)}
+                              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold hover:bg-white/[0.08] transition-all"
+                            >
+                              <Download size={13} />
+                              Admit Card
+                            </button>
+                            <a
+                              href="https://t.me/acob_bangladesh"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                            >
+                              <ExternalLink size={13} />
+                              Telegram Group
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
 
+          {/* REGISTERED EVENTS PANEL */}
           {activeTab === 'events' && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <h2 className="text-2xl font-bold">Registered Olympiads</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 h-24 w-24 bg-purple-500/5 rounded-full blur-xl" />
-                  <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                    Olympiad Round 1
-                  </span>
-                  <h3 className="font-bold text-lg mt-3">Applied Cognitio Olympiad</h3>
-                  <p className="text-neutral-400 text-xs mt-1">National preliminary test testing problem solving and cognitive skills.</p>
-                  <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-                    <span className="text-neutral-500">Scheduled:</span>
-                    <span className="font-semibold text-white">August 28, 2026</span>
-                  </div>
+              <h2 className="text-2xl font-bold">My Enrolled Events</h2>
+              
+              {registeredEvents.length === 0 ? (
+                <div className="rounded-3xl border border-white/5 bg-neutral-950 p-12 text-center">
+                  <Calendar size={48} className="mx-auto text-neutral-600 mb-4" />
+                  <h3 className="font-bold text-lg text-white">No enrolled events</h3>
+                  <p className="text-neutral-500 text-sm max-w-sm mx-auto mt-1">
+                    You have not registered for any events yet. Head to the Overview tab to view and sign up for upcoming Olympiads.
+                  </p>
+                  <button 
+                    onClick={() => setActiveTab('overview')}
+                    className="mt-5 rounded-2xl bg-purple-600 px-6 py-2.5 text-xs font-semibold text-white transition-all hover:bg-purple-500"
+                  >
+                    View Olympiads
+                  </button>
                 </div>
-
-                <div className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/5 rounded-full blur-xl" />
-                  <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                    Challenge Event
-                  </span>
-                  <h3 className="font-bold text-lg mt-3">Cognitive Science Challenge</h3>
-                  <p className="text-neutral-400 text-xs mt-1">Special logic, sequence, and analytical reasoning challenge.</p>
-                  <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
-                    <span className="text-neutral-500">Scheduled:</span>
-                    <span className="font-semibold text-white">September 15, 2026</span>
-                  </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {UPCOMING_EVENTS.filter(e => registeredEvents.includes(e.id)).map((event) => (
+                    <div key={event.id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/5 rounded-full blur-xl" />
+                      <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                        {event.category}
+                      </span>
+                      <h3 className="font-bold text-lg mt-3">{event.title}</h3>
+                      <p className="text-neutral-400 text-xs mt-1">{event.desc}</p>
+                      
+                      <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-xs">
+                        <span className="text-neutral-500">Date:</span>
+                        <span className="font-semibold text-white">{event.date}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </motion.div>
           )}
 
+          {/* DYNAMIC CERTIFICATES PANEL */}
           {activeTab === 'certificates' && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -481,27 +698,101 @@ export default function DashboardPage() {
               className="space-y-6"
             >
               <h2 className="text-2xl font-bold">My Awards & Certificates</h2>
-              <div className="rounded-3xl border border-white/5 bg-neutral-950 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="rounded-2xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-500">
-                    <Trophy size={28} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-base">National Olympiad 2026 Certificate</h3>
-                    <p className="text-xs text-neutral-400 mt-0.5">ID: ACOB-2026-98A1B • Senior category gold medal</p>
-                  </div>
+              
+              {loadingCerts ? (
+                <div className="py-12 text-center text-sm text-neutral-500 flex justify-center items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
+                  <span>Loading certificates database...</span>
                 </div>
-                <Link
-                  href="/verify?id=ACOB-2026-98A1B"
-                  className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold hover:bg-white/[0.08] transition-all"
-                >
-                  Verify Certificate
-                  <ChevronRight size={14} />
-                </Link>
+              ) : certificates.length === 0 ? (
+                <div className="rounded-3xl border border-white/5 bg-neutral-950 p-12 text-center">
+                  <Award size={48} className="mx-auto text-neutral-600 mb-4" />
+                  <h3 className="font-bold text-lg text-white">No certificates issued</h3>
+                  <p className="text-neutral-500 text-sm max-w-sm mx-auto mt-1">
+                    No certificates issued to name "{displayName || user.user_metadata?.full_name}" yet. Certificates are issued automatically upon exam completion.
+                  </p>
+                  <p className="text-[10px] text-neutral-600 mt-2">
+                    Tip: Make sure your Profile Display Name matches the name registered for your exams to automatically link credentials.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {certificates.map((cert) => (
+                    <div key={cert.id || cert.certificate_id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="rounded-2xl bg-amber-500/10 p-3 border border-amber-500/20 text-amber-500">
+                          <Trophy size={28} />
+                        </div>
+                        <div className="text-left">
+                          <h3 className="font-bold text-base">{cert.event_name} Certificate</h3>
+                          <p className="text-xs text-neutral-400 mt-0.5">ID: {cert.certificate_id} • {cert.achievement}</p>
+                          <span className="text-[10px] text-neutral-500 block mt-1">Issued Date: {cert.issue_date}</span>
+                        </div>
+                      </div>
+                      <Link
+                        href={`/verify?id=${cert.certificate_id}`}
+                        className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold hover:bg-white/[0.08] transition-all"
+                      >
+                        Verify Certificate
+                        <ChevronRight size={14} />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* DASHBOARD RESOURCES TAB */}
+          {activeTab === 'resources' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div>
+                <h2 className="text-2xl font-bold">Preparation & Study Resources</h2>
+                <p className="text-neutral-400 text-xs mt-1">Exclusive study resources, video sessions and downloadables for registered members.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {STUDENT_RESOURCES.map((category) => (
+                  <div key={category.category} className="space-y-4">
+                    <h3 className="text-xs font-bold font-mono tracking-wider text-neutral-500 uppercase px-1">
+                      {category.category}
+                    </h3>
+                    <div className="space-y-3">
+                      {category.items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="group p-4 rounded-2xl bg-neutral-950 border border-white/5 hover:border-purple-500/20 transition-all duration-300"
+                        >
+                          <div className="flex justify-between items-start gap-3">
+                            <div>
+                              <span className="text-[9px] font-bold text-cyan-400 uppercase tracking-widest block mb-1">
+                                {item.type}
+                              </span>
+                              <h4 className="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">
+                                {item.title}
+                              </h4>
+                              <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">
+                                {item.desc}
+                              </p>
+                            </div>
+                            <button className="rounded-lg bg-neutral-900 border border-white/5 p-1 text-neutral-400 group-hover:text-cyan-400 transition-all shrink-0">
+                              <Download size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           )}
 
+          {/* SETTINGS PANEL */}
           {activeTab === 'settings' && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -585,31 +876,54 @@ export default function DashboardPage() {
                 </div>
               </form>
 
+              {/* SECURITY / UPDATE PASSWORD (WITH CURRENT PASSWORD CHECK) */}
               <h2 className="text-2xl font-bold pt-6 border-t border-white/5">Security Settings</h2>
               <form onSubmit={handleChangePassword} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 space-y-4">
+                
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400">Current Password</label>
+                  <div className="relative">
+                    <Key size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" />
+                    <input
+                      type="password"
+                      placeholder="Enter current password to verify identity"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500/30"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400">New Password</label>
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-3 px-4 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500/30"
-                      required
-                    />
+                    <div className="relative">
+                      <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" />
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500/30"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400">Confirm New Password</label>
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-3 px-4 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500/30"
-                      required
-                    />
+                    <div className="relative">
+                      <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500" />
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="w-full rounded-2xl border border-white/10 bg-white/[0.02] py-3 pl-11 pr-4 text-sm text-white placeholder-neutral-600 outline-none focus:border-purple-500/30"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -628,6 +942,190 @@ export default function DashboardPage() {
 
         </div>
       </div>
+
+      {/* 1. MOCK QUIZ PRACTICE MODAL */}
+      <AnimatePresence>
+        {isQuizOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              onClick={() => setIsQuizOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-lg bg-neutral-950 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 font-sans"
+            >
+              {!quizFinished ? (
+                <div>
+                  <div className="flex justify-between items-center pb-4 border-b border-white/5">
+                    <span className="text-xs font-mono uppercase tracking-widest text-purple-400">
+                      Problem Solving Practice ({currentQuestionIdx + 1} of {PRACTICE_QUESTIONS.length})
+                    </span>
+                    <button 
+                      onClick={() => setIsQuizOpen(false)}
+                      className="text-neutral-500 hover:text-white text-xs"
+                    >
+                      Exit Test
+                    </button>
+                  </div>
+                  
+                  <div className="my-6">
+                    <h3 className="text-base font-bold text-white leading-relaxed">
+                      {PRACTICE_QUESTIONS[currentQuestionIdx].q}
+                    </h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    {PRACTICE_QUESTIONS[currentQuestionIdx].options.map((option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedAnswers({ ...selectedAnswers, [currentQuestionIdx]: idx })}
+                        className={`w-full text-left p-4 rounded-2xl border text-sm font-semibold transition-all ${
+                          selectedAnswers[currentQuestionIdx] === idx
+                            ? 'bg-purple-600/10 border-purple-500 text-purple-300'
+                            : 'bg-white/[0.01] border-white/5 text-neutral-400 hover:bg-white/[0.03] hover:text-white'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-8 flex justify-end">
+                    {currentQuestionIdx < PRACTICE_QUESTIONS.length - 1 ? (
+                      <button
+                        onClick={() => setCurrentQuestionIdx(currentQuestionIdx + 1)}
+                        disabled={selectedAnswers[currentQuestionIdx] === undefined}
+                        className="rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-bold text-white transition-all disabled:opacity-50"
+                      >
+                        Next Question
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setQuizFinished(true)}
+                        disabled={selectedAnswers[currentQuestionIdx] === undefined}
+                        className="rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 px-6 py-2.5 text-xs font-bold text-white transition-all disabled:opacity-50"
+                      >
+                        Finish Quiz
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <div className="h-16 w-16 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Trophy size={32} />
+                  </div>
+                  <h3 className="text-xl font-bold">Quiz Completed!</h3>
+                  <p className="text-neutral-400 text-sm mt-1">
+                    You scored <strong className="text-purple-400">{calculateQuizScore()}</strong> out of {PRACTICE_QUESTIONS.length} correct.
+                  </p>
+                  <div className="mt-6 flex justify-center gap-3">
+                    <button
+                      onClick={() => {
+                        setCurrentQuestionIdx(0);
+                        setSelectedAnswers({});
+                        setQuizFinished(false);
+                      }}
+                      className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-2 text-xs font-semibold hover:bg-white/[0.05]"
+                    >
+                      Retry Quiz
+                    </button>
+                    <button
+                      onClick={() => setIsQuizOpen(false)}
+                      className="rounded-xl bg-purple-600 px-5 py-2 text-xs font-semibold text-white hover:bg-purple-500"
+                    >
+                      Return to Dashboard
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 2. ADMIT CARD MODAL */}
+      <AnimatePresence>
+        {admitCardEvent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              onClick={() => setAdmitCardEvent(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-neutral-950 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 text-left font-sans"
+            >
+              <div className="border-b border-white/5 pb-4 mb-4 flex justify-between items-center">
+                <span className="text-xs font-mono tracking-widest text-cyan-400 font-bold uppercase">Official Admit Card</span>
+                <button 
+                  onClick={() => setAdmitCardEvent(null)}
+                  className="text-neutral-500 hover:text-white text-xs"
+                >
+                  Close
+                </button>
+              </div>
+
+              {/* Printable Ticket Area */}
+              <div className="rounded-2xl border border-dashed border-neutral-800 bg-[#060608] p-5 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-extrabold text-sm text-white">ACOB 2026 ADMIT TICKET</h4>
+                  <span className="text-[10px] text-cyan-400 font-mono uppercase bg-cyan-500/10 px-2 py-0.5 rounded">Verified</span>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs border-b border-neutral-900 pb-1.5">
+                    <span className="text-neutral-500">Student Name:</span>
+                    <span className="font-semibold text-neutral-200">{displayName || user.user_metadata?.full_name}</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-b border-neutral-900 pb-1.5">
+                    <span className="text-neutral-500">Institution:</span>
+                    <span className="font-semibold text-neutral-200">{school}</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-b border-neutral-900 pb-1.5">
+                    <span className="text-neutral-500">Tier Level:</span>
+                    <span className="font-semibold text-neutral-200">{grade}</span>
+                  </div>
+                  <div className="flex justify-between text-xs border-b border-neutral-900 pb-1.5">
+                    <span className="text-neutral-500">Competition:</span>
+                    <span className="font-semibold text-neutral-200">{admitCardEvent.title}</span>
+                  </div>
+                  <div className="flex justify-between text-xs pb-1.5">
+                    <span className="text-neutral-500">Event Date:</span>
+                    <span className="font-semibold text-neutral-200">{admitCardEvent.date}</span>
+                  </div>
+                </div>
+
+                <div className="bg-neutral-900/50 rounded-xl p-3 border border-neutral-800 text-[10px] text-neutral-400 font-light leading-relaxed">
+                  <strong>Notice:</strong> Please print a copy of this ticket or save it on your device. Present your credentials alongside a photo identity card on competition day.
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined') window.print();
+                  }}
+                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-bold text-white transition-all hover:bg-purple-500"
+                >
+                  Print Ticket
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
