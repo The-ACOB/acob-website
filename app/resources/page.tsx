@@ -16,23 +16,42 @@ import {
   Calendar, 
   Clock
 } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 // ========================================================
 // CONTROLS PANEL: Change true to false to turn on a tab!
 // ========================================================
 const TAB_LOCKS = {
-  guides: true,       // Controls 'Study Guides' content
-  videos: true,       // Controls 'Video Tutorials' content
-  competition: true,  // Controls 'Competition Resources' content
-  podcast: false,     // Controls 'Inside Excellence Podcast' content
+  guides: false,       // Default false so admin items are visible
+  videos: false,       
+  competition: false,  
+  podcast: false,     
 };
 
-const resources = [
+const getIconForCategory = (id: string) => {
+  switch (id) {
+    case 'guides': return BookOpen;
+    case 'videos': return Video;
+    case 'competition': return Download;
+    case 'podcast': return Headphones;
+    default: return BookOpen;
+  }
+};
+
+const getBadgeColorForCategory = (id: string) => {
+  switch (id) {
+    case 'guides': return 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400';
+    case 'videos': return 'bg-purple-500/10 border-purple-500/30 text-purple-400';
+    case 'competition': return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
+    case 'podcast': return 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400';
+    default: return 'bg-neutral-500/10 border-neutral-500/30 text-neutral-400';
+  }
+};
+
+const defaultResources = [
   {
     id: 'guides',
     category: 'Study Guides',
-    icon: BookOpen,
-    badgeColor: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
     layout: 'grid',
     items: [
       {
@@ -58,8 +77,6 @@ const resources = [
   {
     id: 'videos',
     category: 'Video Tutorials',
-    icon: Video,
-    badgeColor: 'bg-purple-500/10 border-purple-500/30 text-purple-400',
     layout: 'grid',
     items: [
       {
@@ -85,8 +102,6 @@ const resources = [
   {
     id: 'competition',
     category: 'Competition Resources',
-    icon: Download,
-    badgeColor: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     layout: 'grid',
     items: [
       {
@@ -112,8 +127,6 @@ const resources = [
   {
     id: 'podcast',
     category: 'Inside Excellence Podcast',
-    icon: Headphones,
-    badgeColor: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
     layout: 'player', 
     items: [
       {
@@ -130,9 +143,32 @@ const resources = [
 
 export default function Resources() {
   const [activeTab, setActiveTab] = useState(0);
+  const [resourcesList, setResourcesList] = useState<any[]>(defaultResources);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>('fcmobvnqsMk');
+
+  // Load from Supabase/LocalStorage
+  useEffect(() => {
+    async function fetchResources() {
+      if (isSupabaseConfigured()) {
+        try {
+          const { data } = await supabase.from('site_content').select('*').eq('key', 'study_resources').single();
+          if (data && data.content && Array.isArray(data.content.categories)) {
+            setResourcesList(data.content.categories);
+          }
+        } catch (e) {
+          console.warn('Error fetching study resources:', e);
+        }
+      } else if (typeof window !== 'undefined') {
+        const local = localStorage.getItem('acob_local_resources');
+        if (local) setResourcesList(JSON.parse(local));
+      }
+    }
+    fetchResources();
+  }, []);
+
   useEffect(() => {
     if (window.location.hash === '#podcast') {
-      const podcastIndex = resources.findIndex(
+      const podcastIndex = resourcesList.findIndex(
         (resource) => resource.id === 'podcast'
       );
 
@@ -140,9 +176,9 @@ export default function Resources() {
         setActiveTab(podcastIndex);
       }
     }
-  }, []);
-  const [selectedVideo, setSelectedVideo] = useState<string | null>('fcmobvnqsMk');
-  const currentCategory = resources[activeTab];
+  }, [resourcesList]);
+
+  const currentCategory = resourcesList[activeTab] || resourcesList[0] || defaultResources[0];
   const isCurrentTabLocked = TAB_LOCKS[currentCategory.id as keyof typeof TAB_LOCKS] ?? false;
 
   return (
@@ -185,8 +221,8 @@ export default function Resources() {
             
             {/* Custom Navigation Tabs Bar */}
             <div className="flex flex-col md:flex-row justify-center items-stretch md:items-center gap-2 p-1.5 rounded-2xl bg-neutral-950/80 border border-neutral-900 backdrop-blur-xl mb-12 sm:mb-16 shadow-2xl max-w-4xl mx-auto">
-              {resources.map((category, idx) => {
-                const Icon = category.icon;
+              {resourcesList.map((category, idx) => {
+                const Icon = getIconForCategory(category.id);
                 const isSelected = activeTab === idx;
                 return (
                   <button
@@ -313,7 +349,7 @@ export default function Resources() {
                         <div className="lg:col-span-5 space-y-4">
                           <h3 className="text-[10px] px-1 font-semibold font-mono tracking-wider text-neutral-500 uppercase">Available Tracks</h3>
                           <div className="space-y-3">
-                            {currentCategory.items.map((item, itemIdx) => {
+                            {currentCategory.items && currentCategory.items.map((item: any, itemIdx: number) => {
                               const isPlaying = selectedVideo === item.id;
                               return (
                                 <div
@@ -336,7 +372,7 @@ export default function Resources() {
 
                                     <div className="space-y-1 min-w-0 flex-1">
                                       <div className="flex items-center justify-between gap-2">
-                                        <span className={`text-[9px] font-mono tracking-wider uppercase font-bold px-1.5 py-0.5 rounded border ${currentCategory.badgeColor}`}>
+                                        <span className={`text-[9px] font-mono tracking-wider uppercase font-bold px-1.5 py-0.5 rounded border ${getBadgeColorForCategory(currentCategory.id)}`}>
                                           {item.type}
                                         </span>
                                         <span className="text-[11px] font-mono text-neutral-500">{item.duration}</span>
@@ -357,7 +393,7 @@ export default function Resources() {
                     ) : (
                       /* Material Grid Content Framework View */
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-                        {resources[activeTab].items.map((item, itemIdx) => (
+                        {currentCategory.items && currentCategory.items.map((item: any, itemIdx: number) => (
                           <motion.div
                             key={itemIdx}
                             whileHover={{ y: -4 }}
@@ -367,7 +403,7 @@ export default function Resources() {
                             <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
                             <div>
                               <div className="flex items-start justify-between gap-4 mb-4">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wider uppercase border ${resources[activeTab].badgeColor}`}>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-semibold tracking-wider uppercase border ${getBadgeColorForCategory(currentCategory.id)}`}>
                                   {item.type}
                                 </span>
                                 <div className="p-1.5 rounded-lg bg-neutral-900/80 border border-neutral-800 text-neutral-500 group-hover:text-cyan-400 group-hover:border-cyan-500/30 transition-all duration-300">

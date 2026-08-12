@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { Geist, Geist_Mono, Outfit } from "next/font/google";
-import Navbar from "@/components/navbar";
-import Footer from "@/components/footer";
-import ScrollToTop from "@/components/scroll-to-top";
-import PodcastPopup from "@/components/podcast-popup"; // 👈 Add global popup import here
+import LayoutWrapper from "@/components/layout-wrapper";
 import { AuthProvider } from "@/components/auth-provider";
 import "./globals.css";
 
@@ -124,14 +121,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
         <AuthProvider>
-          <Navbar />
-
-          {/* Rendered sitewide, listening contextually to users navigating on home or materials paths */}
-          <PodcastPopup />
-
-          {children}
-          <ScrollToTop />
-          <Footer />
+          <LayoutWrapper>
+            {children}
+          </LayoutWrapper>
         </AuthProvider>
         <Analytics />
       </body>

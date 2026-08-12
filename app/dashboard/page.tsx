@@ -101,6 +101,28 @@ export default function DashboardPage() {
   const [registeredEvents, setRegisteredEvents] = useState<string[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
   const [loadingCerts, setLoadingCerts] = useState(true);
+  const [events, setEvents] = useState<any[]>(UPCOMING_EVENTS);
+
+  // Load Dynamic Upcoming Events
+  useEffect(() => {
+    async function fetchEvents() {
+      const { isSupabaseConfigured, supabase } = await import('@/lib/supabase');
+      if (isSupabaseConfigured()) {
+        try {
+          const { data } = await supabase.from('site_content').select('*').eq('key', 'upcoming_events').single();
+          if (data && data.content && Array.isArray(data.content.events)) {
+            setEvents(data.content.events);
+          }
+        } catch (e) {
+          console.warn('Error fetching events:', e);
+        }
+      } else if (typeof window !== 'undefined') {
+        const local = localStorage.getItem('acob_local_events');
+        if (local) setEvents(JSON.parse(local));
+      }
+    }
+    fetchEvents();
+  }, []);
 
   // Quiz Modal state
   const [isQuizOpen, setIsQuizOpen] = useState(false);
@@ -564,7 +586,7 @@ export default function DashboardPage() {
               <h2 className="text-xl font-bold tracking-tight mt-6">Upcoming Events & Olympiads</h2>
               
               <div className="space-y-6">
-                {UPCOMING_EVENTS.map((event) => {
+                {events.map((event) => {
                   const isRegistered = registeredEvents.includes(event.id);
                   return (
                     <div key={event.id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden transition-all hover:border-white/10 duration-300">
@@ -670,7 +692,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {UPCOMING_EVENTS.filter(e => registeredEvents.includes(e.id)).map((event) => (
+                  {events.filter(e => registeredEvents.includes(e.id)).map((event) => (
                     <div key={event.id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden">
                       <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/5 rounded-full blur-xl" />
                       <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
