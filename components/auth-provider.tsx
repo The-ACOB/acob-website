@@ -26,42 +26,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (!isSupabaseConfigured()) {
-      // Mock session fallback for testing/dev if Supabase is not fully configured
+    const loadSession = async () => {
+      try {
+        if (!isSupabaseConfigured()) {
+          if (!loadMockSession()) {
+            setLoading(false);
+          }
+          return;
+        }
+
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+          setLoading(false);
+        } else {
+          // If no Supabase session, check if there is a mock session we can use as fallback
+          if (!loadMockSession()) {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading Supabase session, falling back to mock:', err);
+        if (!loadMockSession()) {
+          setLoading(false);
+        }
+      }
+    };
+
+    const loadMockSession = () => {
       const localSession = localStorage.getItem('acob_mock_session');
       if (localSession) {
         try {
           const parsed = JSON.parse(localSession);
           setUser(parsed.user);
           setSession(parsed);
+          setLoading(false);
+          return true;
         } catch (e) {
-          console.error(e);
+          console.error('Failed to parse mock session:', e);
         }
       }
-      setLoading(false);
-      return;
+      return false;
+    };
+
+    loadSession();
+
+    // Listen to changes if configured
+    let subscription: any = null;
+    if (isSupabaseConfigured()) {
+      try {
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (session) {
+            setSession(session);
+            setUser(session.user);
+            setLoading(false);
+          } else {
+            // Check if mock session exists
+            if (!loadMockSession()) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+            }
+          }
+        });
+        subscription = data?.subscription;
+      } catch (err) {
+        console.error('Error subscribing to auth state change:', err);
+      }
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen to changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
     return () => {
-      subscription.unsubscribe();
+      if (subscription) {
+        subscription.unsubscribe();
+      }
     };
   }, []);
 
