@@ -33,6 +33,11 @@ export default function AdminLoginPage() {
 
   if (authorized === false) {
     notFound();
+    return null;
+  }
+
+  if (authorized === null) {
+    return null; // Return empty space or spinner during authorization check to prevent flash of login screen
   }
 
   const handleLogin = async (e: React.FormEvent) => {
