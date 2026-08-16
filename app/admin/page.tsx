@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, notFound } from 'next/navigation';
 import { ShieldCheck, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -14,17 +14,26 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
 
   // Clear any existing admin session on mount and check for warning params
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('error') === 'unauthorized' || params.get('attempt') === 'passcode') {
-        setError('SECURITY WARNING: Direct passcode URL access bypass attempt detected. We have reported this unusual behaviour to the dev team. Your session and device identifiers have been logged.');
+      const isAuthorizedPasscode = params.get('pass') === process.env.NEXT_PUBLIC_ADMIN_PASSCODE;
+      
+      if (!isAuthorizedPasscode) {
+        setAuthorized(false);
+      } else {
+        setAuthorized(true);
       }
       sessionStorage.removeItem('acob_admin_session');
     }
   }, []);
+
+  if (authorized === false) {
+    notFound();
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +104,6 @@ export default function AdminLoginPage() {
       <div className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-cyan-500/10 blur-3xl" />
 
       <div className="w-full max-w-md bg-neutral-950 border border-white/10 rounded-3xl p-8 shadow-2xl relative">
-        
         {/* Header */}
         <div className="flex flex-col items-center text-center pb-6">
           <div className="w-12 h-12 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 mb-4">
