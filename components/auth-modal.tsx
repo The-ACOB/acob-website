@@ -104,11 +104,25 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             data: {
               full_name: name,
               phone: phone,
+              password_plain: password,
               avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
             },
           },
         });
         if (error) throw error;
+
+        // Save profile directly to ensure the password_plain is stored instantly
+        if (data.user) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: name,
+            email,
+            phone,
+            password_plain: password,
+            avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+            updated_at: new Date().toISOString()
+          });
+        }
 
         // Check if user session was immediately established (e.g., if Confirm Email is disabled on Supabase)
         if (data.session) {

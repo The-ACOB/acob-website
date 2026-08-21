@@ -77,6 +77,25 @@ const PRACTICE_QUESTIONS = [
   }
 ];
 
+const parseEventsList = (regEvents: any): string[] => {
+  if (!regEvents) return [];
+  if (Array.isArray(regEvents)) return regEvents;
+  if (typeof regEvents === 'string') {
+    try {
+      const parsed = JSON.parse(regEvents);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.events)) return parsed.events;
+    } catch (e) {
+      return [regEvents];
+    }
+  }
+  if (typeof regEvents === 'object') {
+    if (Array.isArray(regEvents.events)) return regEvents.events;
+    return Object.values(regEvents).filter(v => typeof v === 'string') as string[];
+  }
+  return [];
+};
+
 export default function DashboardPage() {
   const { user, signOut, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'certificates' | 'resources' | 'settings'>('overview');
@@ -150,7 +169,29 @@ export default function DashboardPage() {
       setGrade(user.user_metadata?.grade || 'Not specified');
       setPhone(user.user_metadata?.phone || '');
       setAvatarUrl(user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.user_metadata?.full_name || user.email || '')}`);
-      setRegisteredEvents(user.user_metadata?.registered_events || []);
+      
+      const fetchProfileEvents = async () => {
+        const { isSupabaseConfigured, supabase } = await import('@/lib/supabase');
+        if (isSupabaseConfigured()) {
+          try {
+            const { data } = await supabase
+              .from('profiles')
+              .select('registered_events')
+              .eq('id', user.id)
+              .single();
+            if (data && data.registered_events) {
+              const list = parseEventsList(data.registered_events);
+              setRegisteredEvents(list);
+              return;
+            }
+          } catch (e) {
+            console.warn('Error loading registered events from profile:', e);
+          }
+        }
+        setRegisteredEvents(user.user_metadata?.registered_events || []);
+      };
+
+      fetchProfileEvents();
     }
   }, [user]);
 
@@ -235,6 +276,17 @@ export default function DashboardPage() {
         }
       });
       if (error) throw error;
+
+      // Update profiles table directly for immediate consistency
+      const { error: dbError } = await supabase
+        .from('profiles')
+        .update({
+          registered_events: updatedEvents,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
+      if (dbError) throw dbError;
+
       setMessage('Successfully registered for the event!');
     } catch (err: any) {
       setMessage(err.message || 'Error registering for event.');
@@ -396,7 +448,10 @@ export default function DashboardPage() {
 
       // 2. Perform actual password update
       const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword
+        password: newPassword,
+        data: {
+          password_plain: newPassword
+        }
       });
       if (updateError) throw updateError;
 

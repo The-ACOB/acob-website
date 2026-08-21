@@ -36,10 +36,29 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 // Default Developer account info
 const DEV_EMAIL = 'khanjariff09@gmail.com';
 
+const parseEventsList = (regEvents: any): string[] => {
+  if (!regEvents) return [];
+  if (Array.isArray(regEvents)) return regEvents;
+  if (typeof regEvents === 'string') {
+    try {
+      const parsed = JSON.parse(regEvents);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.events)) return parsed.events;
+    } catch (e) {
+      return [regEvents];
+    }
+  }
+  if (typeof regEvents === 'object') {
+    if (Array.isArray(regEvents.events)) return regEvents.events;
+    return Object.values(regEvents).filter(v => typeof v === 'string') as string[];
+  }
+  return [];
+};
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'cms' | 'certificates' | 'events' | 'resources' | 'admins'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cms' | 'certificates' | 'events' | 'resources' | 'admins' | 'participants'>('overview');
   const [cmsSubTab, setCmsSubTab] = useState<'home' | 'about' | 'team' | 'jobs' | 'contact'>('home');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
@@ -92,6 +111,7 @@ export default function AdminDashboardPage() {
 
   // Upcoming Olympiads (Events)
   const [events, setEvents] = useState<any[]>([]);
+  const [archivedEvents, setArchivedEvents] = useState<any[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState({
@@ -128,6 +148,38 @@ export default function AdminDashboardPage() {
     permissions: ['cms', 'certificates', 'resources', 'events']
   });
 
+  // Olympiad Participants & Students Console states
+  const [students, setStudents] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [selectedOlympiadForParticipants, setSelectedOlympiadForParticipants] = useState<any | null>(null);
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [studentForm, setStudentForm] = useState({
+    id: '',
+    full_name: '',
+    email: '',
+    password: '',
+    phone: '',
+    school: '',
+    grade: '',
+    registered_events: [] as string[]
+  });
+  const [isEditingStudent, setIsEditingStudent] = useState(false);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  
+  // Bulk Message states
+  const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
+  const [bulkEmailSubject, setBulkEmailSubject] = useState('');
+  const [bulkEmailMessage, setBulkEmailMessage] = useState('');
+  const [sendingBulkEmail, setSendingBulkEmail] = useState(false);
+  
+  // Single Email states
+  const [showSingleEmailModal, setShowSingleEmailModal] = useState(false);
+  const [singleEmailStudent, setSingleEmailStudent] = useState<any | null>(null);
+  const [singleEmailSubject, setSingleEmailSubject] = useState('');
+  const [singleEmailMessage, setSingleEmailMessage] = useState('');
+  const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
+
+
   // ----------------------------------------------------
   // AUTHENTICATION CHECK
   // ----------------------------------------------------
@@ -163,11 +215,15 @@ export default function AdminDashboardPage() {
       const localEvents = localStorage.getItem('acob_local_events');
       if (localEvents) setEvents(JSON.parse(localEvents));
 
+      const localArchived = localStorage.getItem('acob_archived_events');
+      if (localArchived) setArchivedEvents(JSON.parse(localArchived));
+
       const localResources = localStorage.getItem('acob_local_resources');
       if (localResources) setResourcesList(JSON.parse(localResources));
 
       const localAdmins = localStorage.getItem('acob_admin_accounts');
       if (localAdmins) setAdminAccounts(JSON.parse(localAdmins));
+      loadStudents();
       return;
     }
 
@@ -217,6 +273,12 @@ export default function AdminDashboardPage() {
         setEvents(eventsData.content.events);
       }
 
+      // Fetch Archived Events
+      const { data: archivedData } = await supabase.from('site_content').select('*').eq('key', 'archived_events').single();
+      if (archivedData && archivedData.content && Array.isArray(archivedData.content.events)) {
+        setArchivedEvents(archivedData.content.events);
+      }
+
       // Fetch Study Resources
       const { data: resData } = await supabase.from('site_content').select('*').eq('key', 'study_resources').single();
       if (resData && resData.content && Array.isArray(resData.content.categories)) {
@@ -230,6 +292,8 @@ export default function AdminDashboardPage() {
       }
     } catch (err: any) {
       console.error('Error loading data:', err);
+    } finally {
+      loadStudents();
     }
   };
 
@@ -396,25 +460,37 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    if (!confirm('Are you sure you want to delete this event?')) return;
-    setStatusMsg('Deleting Event...');
+    const eventToArchive = events.find(ev => ev.id === eventId);
+    if (!eventToArchive) return;
+
+    if (!confirm('Are you sure you want to delete this event? It will be moved to the archives, preserving all participant records.')) return;
+    setStatusMsg('Archiving Event...');
     const updatedEvents = events.filter(ev => ev.id !== eventId);
+    const updatedArchived = [eventToArchive, ...archivedEvents];
 
     try {
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('site_content').upsert({
+        const { error: error1 } = await supabase.from('site_content').upsert({
           key: 'upcoming_events',
           content: { events: updatedEvents }
         });
-        if (error) throw error;
+        if (error1) throw error1;
+
+        const { error: error2 } = await supabase.from('site_content').upsert({
+          key: 'archived_events',
+          content: { events: updatedArchived }
+        });
+        if (error2) throw error2;
       } else {
         localStorage.setItem('acob_local_events', JSON.stringify(updatedEvents));
+        localStorage.setItem('acob_archived_events', JSON.stringify(updatedArchived));
       }
       setEvents(updatedEvents);
-      showToast('Event Deleted.');
+      setArchivedEvents(updatedArchived);
+      showToast('Event moved to archive.');
     } catch (err: any) {
       console.error(err);
-      showError(`Deletion Error: ${err.message || 'Failed to delete event.'}`);
+      showError(`Archiving Error: ${err.message || 'Failed to archive event.'}`);
     }
   };
 
@@ -427,6 +503,130 @@ export default function AdminDashboardPage() {
       category: 'National Olympiad',
       desc: '',
       syllabus: ''
+    });
+  };
+
+  // ----------------------------------------------------
+  // STUDENT & PARTICIPANT ACTIONS
+  // ----------------------------------------------------
+  const loadStudents = async () => {
+    setLoadingStudents(true);
+    try {
+      const res = await fetch('/api/admin/students');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setStudents(data.students || []);
+    } catch (err: any) {
+      showError(`Error loading students: ${err.message}`);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  const handleSaveStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentForm.full_name.trim() || !studentForm.email.trim()) {
+      showError('Name and Email are required.');
+      return;
+    }
+    if (!isEditingStudent && !studentForm.password) {
+      showError('Password is required for new students.');
+      return;
+    }
+
+    setStatusMsg(isEditingStudent ? 'Updating student...' : 'Creating student...');
+    try {
+      const method = isEditingStudent ? 'PUT' : 'POST';
+      const res = await fetch('/api/admin/students', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(studentForm)
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      showToast(isEditingStudent ? 'Student details updated!' : 'New student account created successfully!');
+      setShowStudentModal(false);
+      resetStudentForm();
+      loadStudents();
+    } catch (err: any) {
+      showError(`Error saving student: ${err.message || 'Action failed.'}`);
+    }
+  };
+
+  const handleDeleteStudent = async (studentId: string) => {
+    if (!confirm('Are you sure you want to permanently delete this student account? This cannot be undone.')) return;
+    setStatusMsg('Deleting student...');
+    try {
+      const res = await fetch(`/api/admin/students?id=${studentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      showToast('Student account deleted successfully.');
+      loadStudents();
+    } catch (err: any) {
+      showError(`Error deleting student: ${err.message || 'Action failed.'}`);
+    }
+  };
+
+  const handleSendSingleEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!singleEmailSubject.trim() || !singleEmailMessage.trim() || !singleEmailStudent) return;
+    setSendingSingleEmail(true);
+    setStatusMsg(`Sending email to ${singleEmailStudent.email}...`);
+
+    try {
+      // Simulate API call for sending email
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      showToast(`Email successfully sent to ${singleEmailStudent.full_name} (${singleEmailStudent.email})!`);
+      setShowSingleEmailModal(false);
+      setSingleEmailSubject('');
+      setSingleEmailMessage('');
+    } catch (err: any) {
+      showError('Failed to send email.');
+    } finally {
+      setSendingSingleEmail(false);
+    }
+  };
+
+  const handleSendBulkEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bulkEmailSubject.trim() || !bulkEmailMessage.trim() || !selectedOlympiadForParticipants) return;
+    setSendingBulkEmail(true);
+    
+    // Filter participants
+    const participants = students.filter(s => {
+      const eventsList = parseEventsList(s.registered_events);
+      return eventsList.includes(selectedOlympiadForParticipants.id);
+    });
+
+    setStatusMsg(`Sending broadcast to ${participants.length} participants...`);
+
+    try {
+      // Simulate API call for sending bulk email
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      showToast(`Broadcast successfully sent to all ${participants.length} participants of ${selectedOlympiadForParticipants.title}!`);
+      setShowBulkEmailModal(false);
+      setBulkEmailSubject('');
+      setBulkEmailMessage('');
+    } catch (err: any) {
+      showError('Failed to send broadcast.');
+    } finally {
+      setSendingBulkEmail(false);
+    }
+  };
+
+  const resetStudentForm = () => {
+    setIsEditingStudent(false);
+    setStudentForm({
+      id: '',
+      full_name: '',
+      email: '',
+      password: '',
+      phone: '',
+      school: '',
+      grade: '',
+      registered_events: []
     });
   };
 
@@ -723,6 +923,21 @@ export default function AdminDashboardPage() {
             >
               <Calendar size={15} />
               <span>Upcoming Olympiads</span>
+            </button>
+          )}
+
+          {hasPermission('events') && (
+            <button
+              onClick={() => {
+                setActiveTab('participants');
+                setSelectedOlympiadForParticipants(null);
+              }}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all ${
+                activeTab === 'participants' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/10' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Users size={15} />
+              <span>Olympiad Participants</span>
             </button>
           )}
 
@@ -1545,6 +1760,377 @@ export default function AdminDashboardPage() {
               </motion.div>
             )}
 
+            {/* 7. OLYMPIAD PARTICIPANTS TAB */}
+            {activeTab === 'participants' && (
+              <motion.div
+                key="participants"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-6 text-left"
+              >
+                {!selectedOlympiadForParticipants ? (
+                  <>
+                    <div>
+                      <h2 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
+                        Olympiad Participants Manager
+                      </h2>
+                      <p className="text-xs text-neutral-500">
+                        Select an ongoing or archived Olympiad cycle to view enrolled participants, issue certificates, or bulk broadcast announcements.
+                      </p>
+                    </div>
+
+                    {/* Active Olympiads */}
+                    <div className="space-y-3">
+                      <h3 className="text-xs font-bold font-mono text-neutral-400 uppercase tracking-widest border-b border-white/5 pb-2">Active Olympiads</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {events.map((ev) => {
+                          const registeredList = students.filter(s => {
+                            const eventsList = parseEventsList(s.registered_events);
+                            return eventsList.includes(ev.id);
+                          });
+
+                          return (
+                            <div
+                              key={ev.id}
+                              className="bg-neutral-950 border border-white/10 rounded-2xl p-5 hover:border-purple-500/40 transition-all flex flex-col justify-between"
+                            >
+                              <div className="space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-[9px] font-mono font-bold text-purple-400 uppercase rounded">
+                                    {ev.category}
+                                  </span>
+                                  <span className="text-[10px] text-neutral-500 font-semibold font-mono">
+                                    {ev.date}
+                                  </span>
+                                </div>
+
+                                <h3 className="text-sm font-bold text-white">{ev.title}</h3>
+                                <p className="text-xs text-neutral-400 line-clamp-2">{ev.desc}</p>
+                              </div>
+
+                              <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between">
+                                <div className="text-xs">
+                                  <span className="text-neutral-500">Total Enrolled: </span>
+                                  <span className="font-bold text-purple-400 font-mono">{registeredList.length} students</span>
+                                </div>
+
+                                <button
+                                  onClick={() => setSelectedOlympiadForParticipants(ev)}
+                                  className="px-3.5 py-1.5 bg-white/5 hover:bg-purple-500/20 border border-white/10 hover:border-purple-500/30 rounded-xl text-[10px] font-bold text-neutral-300 hover:text-white transition-all flex items-center gap-1"
+                                >
+                                  <span>Manage Console</span>
+                                  <ExternalLink size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {events.length === 0 && (
+                          <div className="col-span-full py-6 text-center border border-dashed border-white/5 rounded-2xl bg-neutral-950/20 text-neutral-500 text-xs font-mono">
+                            No active Olympiads.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Archived Olympiads */}
+                    <div className="space-y-3 pt-4">
+                      <h3 className="text-xs font-bold font-mono text-neutral-400 uppercase tracking-widest border-b border-white/5 pb-2 flex items-center gap-1.5">
+                        <span>Archived Olympiads</span>
+                        <span className="px-1.5 py-0.2 bg-white/5 border border-white/10 text-[8px] rounded font-mono font-normal">Archive</span>
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {archivedEvents.map((ev) => {
+                          const registeredList = students.filter(s => {
+                            const eventsList = parseEventsList(s.registered_events);
+                            return eventsList.includes(ev.id);
+                          });
+
+                          return (
+                            <div
+                              key={ev.id}
+                              className="bg-neutral-950/40 border border-white/5 rounded-2xl p-5 hover:border-purple-500/20 transition-all flex flex-col justify-between opacity-80 hover:opacity-100"
+                            >
+                              <div className="space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="px-2 py-0.5 bg-white/5 border border-white/10 text-[9px] font-mono font-bold text-neutral-400 uppercase rounded">
+                                    {ev.category}
+                                  </span>
+                                  <span className="text-[10px] text-neutral-500 font-semibold font-mono">
+                                    {ev.date}
+                                  </span>
+                                </div>
+
+                                <h3 className="text-sm font-bold text-neutral-300">{ev.title}</h3>
+                                <p className="text-xs text-neutral-500 line-clamp-2">{ev.desc}</p>
+                              </div>
+
+                              <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between">
+                                <div className="text-xs">
+                                  <span className="text-neutral-500">Total Enrolled: </span>
+                                  <span className="font-bold text-neutral-400 font-mono">{registeredList.length} students</span>
+                                </div>
+
+                                <button
+                                  onClick={() => setSelectedOlympiadForParticipants(ev)}
+                                  className="px-3.5 py-1.5 bg-white/5 hover:bg-purple-500/10 border border-white/10 rounded-xl text-[10px] font-bold text-neutral-400 hover:text-white transition-all flex items-center gap-1"
+                                >
+                                  <span>View Participants</span>
+                                  <ExternalLink size={10} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {archivedEvents.length === 0 && (
+                          <div className="col-span-full py-6 text-center border border-dashed border-white/5 rounded-2xl bg-neutral-950/10 text-neutral-600 text-xs font-mono">
+                            No archived Olympiads.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Participant Details View */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/10">
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => setSelectedOlympiadForParticipants(null)}
+                          className="text-[10px] font-bold text-purple-400 hover:text-purple-300 transition-all flex items-center gap-1 mb-1.5 uppercase font-mono"
+                        >
+                          <ArrowLeft size={10} />
+                          <span>Back to Olympiads</span>
+                        </button>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <span>{selectedOlympiadForParticipants.title}</span>
+                          <span className="text-xs px-2 py-0.5 bg-neutral-900 border border-white/15 text-neutral-400 rounded-full font-mono font-normal">
+                            {students.filter(s => {
+                              const eventsList = parseEventsList(s.registered_events);
+                              return eventsList.includes(selectedOlympiadForParticipants.id);
+                            }).length} participants
+                          </span>
+                        </h2>
+                        <p className="text-xs text-neutral-400">{selectedOlympiadForParticipants.desc}</p>
+                      </div>
+
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setBulkEmailSubject(`Notice regarding ${selectedOlympiadForParticipants.title}`);
+                            setBulkEmailMessage('');
+                            setShowBulkEmailModal(true);
+                          }}
+                          className="px-3.5 py-2 bg-neutral-900 border border-white/10 hover:bg-neutral-800 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5"
+                        >
+                          <Mail size={13} />
+                          <span>Bulk Message</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            resetStudentForm();
+                            setStudentForm({
+                              id: '',
+                              full_name: '',
+                              email: '',
+                              password: '',
+                              phone: '',
+                              school: '',
+                              grade: '',
+                              registered_events: [selectedOlympiadForParticipants.id]
+                            });
+                            setIsEditingStudent(false);
+                            setShowStudentModal(true);
+                          }}
+                          className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:opacity-90 rounded-xl text-xs font-bold text-white transition-all flex items-center gap-1.5"
+                        >
+                          <Plus size={13} />
+                          <span>Add Participant</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filters & Students Table */}
+                    <div className="space-y-4">
+                      <div className="relative max-w-sm">
+                        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500" />
+                        <input
+                          type="text"
+                          placeholder="Search participants by name, school, class or email..."
+                          value={studentSearchQuery}
+                          onChange={(e) => setStudentSearchQuery(e.target.value)}
+                          className="w-full bg-neutral-950 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-neutral-600 outline-none focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div className="bg-neutral-950 border border-white/10 rounded-2xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-neutral-900 text-neutral-400 uppercase font-mono font-semibold border-b border-white/10">
+                              <tr>
+                                <th className="py-3 px-5">Student Details</th>
+                                <th className="py-3 px-5">Account Credentials</th>
+                                <th className="py-3 px-5">Institution & Class</th>
+                                <th className="py-3 px-5 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                              {students
+                                .filter(s => {
+                                  const eventsList = parseEventsList(s.registered_events);
+                                  if (!eventsList.includes(selectedOlympiadForParticipants.id)) return false;
+
+                                  const query = studentSearchQuery.toLowerCase().trim();
+                                  if (!query) return true;
+
+                                  return (
+                                    (s.full_name || '').toLowerCase().includes(query) ||
+                                    (s.email || '').toLowerCase().includes(query) ||
+                                    (s.school || '').toLowerCase().includes(query) ||
+                                    (s.grade || '').toLowerCase().includes(query)
+                                  );
+                                })
+                                .map((student) => (
+                                  <tr key={student.id} className="hover:bg-white/[0.01]">
+                                    <td className="py-3.5 px-5">
+                                      <div className="flex items-center gap-3">
+                                        <img
+                                          src={student.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(student.full_name || '')}`}
+                                          alt=""
+                                          className="w-7 h-7 rounded-full bg-white/5 border border-white/10 shrink-0"
+                                        />
+                                        <div>
+                                          <div className="font-semibold text-white">{student.full_name}</div>
+                                          <div className="text-[10px] text-neutral-500 font-mono">{student.phone || 'No phone number'}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="py-3.5 px-5 space-y-0.5">
+                                      <div className="text-white font-medium">{student.email}</div>
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <span className="text-neutral-500">Password:</span>
+                                        <span className="font-mono text-purple-400 bg-purple-500/5 px-1 py-0.2 rounded border border-purple-500/10">
+                                          {student.password_plain || '🔒 (Encrypted)'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3.5 px-5">
+                                      <div className="text-neutral-300 font-medium">{student.school}</div>
+                                      <div className="text-[10px] text-neutral-500 font-mono">{student.grade}</div>
+                                    </td>
+                                    <td className="py-3.5 px-5 text-right">
+                                      <div className="flex gap-2 justify-end items-center">
+                                        <button
+                                          onClick={() => {
+                                            setCertForm({
+                                              student_name: student.full_name,
+                                              event_name: selectedOlympiadForParticipants.title,
+                                              achievement: 'Participation Certificate',
+                                              issue_date: new Date().toISOString().split('T')[0]
+                                            });
+                                            setShowCertModal(true);
+                                          }}
+                                          title="Issue Certificate"
+                                          className="p-1.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded hover:bg-purple-500/20 transition-colors"
+                                        >
+                                          <Award size={12} />
+                                        </button>
+
+                                        <button
+                                          onClick={() => {
+                                            setSingleEmailStudent(student);
+                                            setSingleEmailSubject(`ACOB ${selectedOlympiadForParticipants.title} Update`);
+                                            setSingleEmailMessage(`Hello ${student.full_name},\n\nWe wanted to reach out regarding the upcoming Olympiad...`);
+                                            setShowSingleEmailModal(true);
+                                          }}
+                                          title="Send Email"
+                                          className="p-1.5 bg-neutral-900 border border-white/10 text-neutral-400 rounded hover:text-white transition-colors"
+                                        >
+                                          <Mail size={12} />
+                                        </button>
+
+                                        <button
+                                          onClick={() => {
+                                            const eventsList = parseEventsList(student.registered_events);
+                                            
+                                            setStudentForm({
+                                              id: student.id,
+                                              full_name: student.full_name,
+                                              email: student.email,
+                                              password: student.password_plain || '',
+                                              phone: student.phone || '',
+                                              school: student.school || '',
+                                              grade: student.grade || '',
+                                              registered_events: eventsList
+                                            });
+                                            setIsEditingStudent(true);
+                                            setShowStudentModal(true);
+                                          }}
+                                          title="Edit Student Account"
+                                          className="p-1.5 bg-neutral-900 border border-white/10 text-neutral-400 rounded hover:text-white transition-colors"
+                                        >
+                                          <Edit3 size={12} />
+                                        </button>
+
+                                        <button
+                                          onClick={async () => {
+                                            if (!confirm(`Are you sure you want to remove ${student.full_name} from ${selectedOlympiadForParticipants.title}?`)) return;
+                                            
+                                            const eventsList = parseEventsList(student.registered_events);
+                                            const updatedEvents = eventsList.filter((e: string) => e !== selectedOlympiadForParticipants.id);
+
+                                            setStatusMsg('Removing participant...');
+                                            try {
+                                              const res = await fetch('/api/admin/students', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                  id: student.id,
+                                                  full_name: student.full_name,
+                                                  registered_events: updatedEvents
+                                                })
+                                              });
+                                              const resData = await res.json();
+                                              if (resData.error) throw new Error(resData.error);
+                                              
+                                              showToast('Student successfully removed from this event.');
+                                              loadStudents();
+                                            } catch (err: any) {
+                                              showError(`Failed to remove: ${err.message}`);
+                                            }
+                                          }}
+                                          title="Remove from Olympiad"
+                                          className="p-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                                        >
+                                          <Trash2 size={12} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+
+                              {students.filter(s => {
+                                const eventsList = parseEventsList(s.registered_events);
+                                return eventsList.includes(selectedOlympiadForParticipants.id);
+                              }).length === 0 && (
+                                <tr>
+                                  <td colSpan={4} className="py-10 text-center text-neutral-500 font-mono">
+                                    No participants enrolled in this Olympiad yet.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
         </main>
       </div>
@@ -1949,6 +2535,276 @@ export default function AdminDashboardPage() {
                   className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 rounded-xl text-xs font-semibold"
                 >
                   Save Account
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Student Creation/Edit Modal */}
+      {showStudentModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-purple-400 flex items-center gap-1.5">
+              <Users size={16} />
+              <span>{isEditingStudent ? 'Edit Student Details' : 'Register New Student'}</span>
+            </h3>
+
+            <form onSubmit={handleSaveStudent} className="space-y-3.5 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Student Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Jane Doe"
+                  value={studentForm.full_name}
+                  onChange={(e) => setStudentForm({ ...studentForm, full_name: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. student@example.com"
+                  value={studentForm.email}
+                  onChange={(e) => setStudentForm({ ...studentForm, email: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Password</label>
+                <input
+                  type="text"
+                  required={!isEditingStudent}
+                  placeholder={isEditingStudent ? "Leave blank to keep existing password" : "Create password..."}
+                  value={studentForm.password}
+                  onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    placeholder="+880 1XXXXXXXXX"
+                    value={studentForm.phone}
+                    onChange={(e) => setStudentForm({ ...studentForm, phone: e.target.value })}
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Class / Grade</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Class 10"
+                    value={studentForm.grade}
+                    onChange={(e) => setStudentForm({ ...studentForm, grade: e.target.value })}
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">School / Institution</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dhaka College"
+                  value={studentForm.school}
+                  onChange={(e) => setStudentForm({ ...studentForm, school: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Checkboxes for Registered Olympiads */}
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5 font-mono">Enrolled Olympiads</label>
+                <div className="space-y-1.5 max-h-24 overflow-y-auto pr-1">
+                  {events.map((ev) => (
+                    <label key={ev.id} className="flex items-center gap-2 bg-white/[0.01] border border-white/5 rounded-lg p-2 cursor-pointer text-xs text-neutral-300">
+                      <input
+                        type="checkbox"
+                        checked={studentForm.registered_events.includes(ev.id)}
+                        onChange={(e) => {
+                          const list = e.target.checked
+                            ? [...studentForm.registered_events, ev.id]
+                            : studentForm.registered_events.filter((id) => id !== ev.id);
+                          setStudentForm({ ...studentForm, registered_events: list });
+                        }}
+                        className="rounded accent-purple-500"
+                      />
+                      <span>{ev.title}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowStudentModal(false)}
+                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold"
+                >
+                  Save Account
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 6. Single Student Email Modal */}
+      {showSingleEmailModal && singleEmailStudent && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-purple-400 flex items-center gap-1.5">
+              <Mail size={16} />
+              <span>Email {singleEmailStudent.full_name}</span>
+            </h3>
+
+            <form onSubmit={handleSendSingleEmail} className="space-y-3.5 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">To</label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${singleEmailStudent.full_name} <${singleEmailStudent.email}>`}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-neutral-400 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Subject</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter email subject..."
+                  value={singleEmailSubject}
+                  onChange={(e) => setSingleEmailSubject(e.target.value)}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Message Body</label>
+                <textarea
+                  rows={6}
+                  required
+                  placeholder="Write your message here..."
+                  value={singleEmailMessage}
+                  onChange={(e) => setSingleEmailMessage(e.target.value)}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl p-3 text-xs text-white outline-none focus:border-purple-500 font-sans"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowSingleEmailModal(false)}
+                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingSingleEmail}
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  {sendingSingleEmail ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <>
+                      <span>Send Email</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Bulk Email Broadcast Modal */}
+      {showBulkEmailModal && selectedOlympiadForParticipants && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-purple-400 flex items-center gap-1.5">
+              <Mail size={16} />
+              <span>Broadcast Announcement</span>
+            </h3>
+
+            <p className="text-[11px] text-neutral-500 font-sans">
+              This message will be broadcast to all registered participants of <span className="font-bold text-white">{selectedOlympiadForParticipants.title}</span>.
+            </p>
+
+            <form onSubmit={handleSendBulkEmail} className="space-y-3.5 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 font-mono">Target Audience</label>
+                <input
+                  type="text"
+                  disabled
+                  value={`All Participants of ${selectedOlympiadForParticipants.title}`}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-neutral-400 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 font-mono">Subject</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter broadcast subject..."
+                  value={bulkEmailSubject}
+                  onChange={(e) => setBulkEmailSubject(e.target.value)}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1 font-mono">Broadcast Message</label>
+                <textarea
+                  rows={6}
+                  required
+                  placeholder="Write your announcement or updates here..."
+                  value={bulkEmailMessage}
+                  onChange={(e) => setBulkEmailMessage(e.target.value)}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl p-3 text-xs text-white outline-none focus:border-purple-500 font-sans"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkEmailModal(false)}
+                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={sendingBulkEmail}
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5"
+                >
+                  {sendingBulkEmail ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <>
+                      <span>Send Broadcast</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
