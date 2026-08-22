@@ -109,12 +109,10 @@ export default function Hero() {
           className="flex flex-col sm:flex-row gap-4 justify-center pt-2"
         >
           <Link 
-            href="/enroll" 
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/signup" 
             className="btn-primary group flex items-center justify-center gap-2 px-8 py-3.5 text-base font-medium rounded-xl transition-all duration-300 shadow-lg shadow-purple-500/10 hover:shadow-purple-500/20"
           >
-            Join Our Waitlist
+            Signup
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-300" />
           </Link>
           <Link 

@@ -253,6 +253,11 @@ export default function DashboardPage() {
   const handleRegisterEvent = async (eventId: string) => {
     if (registeredEvents.includes(eventId)) return;
     
+    const event = events.find(e => e.id === eventId);
+    const eventTitle = event ? event.title : 'this event';
+    const confirmed = window.confirm(`Are you sure you want to register for "${eventTitle}"?`);
+    if (!confirmed) return;
+
     const updatedEvents = [...registeredEvents, eventId];
     setRegisteredEvents(updatedEvents);
     setMessage(null);
@@ -671,8 +676,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="mt-6 pt-4 border-t border-white/5 flex flex-wrap gap-3 items-center justify-between">
-                        <span className="text-xs text-neutral-500">Tier Category: Senior Category</span>
+                      <div className="mt-6 pt-4 border-t border-white/5 flex flex-wrap gap-3 items-center justify-end">
                         
                         {!isRegistered ? (
                           <button
@@ -685,18 +689,6 @@ export default function DashboardPage() {
                         ) : (
                           <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => {
-                                setCurrentQuestionIdx(0);
-                                setSelectedAnswers({});
-                                setQuizFinished(false);
-                                setIsQuizOpen(true);
-                              }}
-                              className="flex items-center gap-1.5 rounded-xl border border-purple-500/20 bg-purple-500/5 px-4 py-2 text-xs font-semibold text-purple-300 hover:bg-purple-500/10 transition-all"
-                            >
-                              <Sparkles size={13} />
-                              Practice Test
-                            </button>
-                            <button
                               onClick={() => setAdmitCardEvent(event)}
                               className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2 text-xs font-semibold hover:bg-white/[0.08] transition-all"
                             >
@@ -704,13 +696,13 @@ export default function DashboardPage() {
                               Admit Card
                             </button>
                             <a
-                              href="https://t.me/acob_bangladesh"
+                              href="https://chat.whatsapp.com/FXYZHLCVpL11W0K9dDPa1i"
                               target="_blank"
                               rel="noreferrer"
-                              className="flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/10 transition-all"
+                              className="flex items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/10 transition-all"
                             >
                               <ExternalLink size={13} />
-                              Telegram Group
+                              WhatsApp Group
                             </a>
                           </div>
                         )}
@@ -1189,16 +1181,7 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    if (typeof window !== 'undefined') window.print();
-                  }}
-                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-bold text-white transition-all hover:bg-purple-500"
-                >
-                  Print Ticket
-                </button>
-              </div>
+
             </motion.div>
           </div>
         )}
