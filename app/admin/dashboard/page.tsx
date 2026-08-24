@@ -28,7 +28,8 @@ import {
   UserCheck,
   Building,
   Briefcase,
-  Contact2
+  Contact2,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -58,7 +59,7 @@ const parseEventsList = (regEvents: any): string[] => {
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [session, setSession] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'cms' | 'certificates' | 'events' | 'resources' | 'admins' | 'participants'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cms' | 'certificates' | 'events' | 'resources' | 'admins' | 'participants' | 'exams'>('overview');
   const [cmsSubTab, setCmsSubTab] = useState<'home' | 'about' | 'team' | 'jobs' | 'contact'>('home');
   const [loading, setLoading] = useState(true);
   const [statusMsg, setStatusMsg] = useState('');
@@ -145,7 +146,7 @@ export default function AdminDashboardPage() {
     email: '',
     password: '',
     role: 'admin',
-    permissions: ['cms', 'certificates', 'resources', 'events']
+    permissions: ['cms', 'certificates', 'resources', 'events', 'participants', 'exams']
   });
 
   // Olympiad Participants & Students Console states
@@ -178,6 +179,411 @@ export default function AdminDashboardPage() {
   const [singleEmailSubject, setSingleEmailSubject] = useState('');
   const [singleEmailMessage, setSingleEmailMessage] = useState('');
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
+
+  // Exams & Questions state
+  const [examsList, setExamsList] = useState<any[]>([]);
+  const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
+  const [viewingSubmission, setViewingSubmission] = useState<any | null>(null);
+  const [viewingSubmissionQuestions, setViewingSubmissionQuestions] = useState<any[]>([]);
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [selectedExam, setSelectedExam] = useState<any | null>(null);
+  const [examQuestions, setExamQuestions] = useState<any[]>([]);
+  const [showExamModal, setShowExamModal] = useState(false);
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [editingExamId, setEditingExamId] = useState<string | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+
+  const [participantsQuestions, setParticipantsQuestions] = useState<any[]>([]);
+
+  const [examForm, setExamForm] = useState({
+    id: '',
+    event_id: '',
+    title: '',
+    start_date: '',
+    end_date: '',
+    is_live_for_admin_only: false,
+    results_published: false,
+    duration: 60
+  });
+
+  const [questionForm, setQuestionForm] = useState({
+    id: '',
+    instruction: '',
+    question_text: '',
+    type: 'mcq', // 'mcq' or 'broad'
+    options: ['', '', '', ''],
+    correct_option_index: 0,
+    points: 1,
+    version: 'both' // 'english', 'bangla', or 'both'
+  });
+
+  const loadExams = async () => {
+    setLoadingExams(true);
+    try {
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        if (data) setExamsList(data);
+      } else {
+        const local = localStorage.getItem('acob_local_exams');
+        if (local) setExamsList(JSON.parse(local));
+      }
+      await loadSubmissions();
+    } catch (err: any) {
+      console.error('Error loading exams:', err);
+    } finally {
+      setLoadingExams(false);
+    }
+  };
+
+  const loadSubmissions = async () => {
+    try {
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase.from('exam_submissions').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        if (data) setAllSubmissions(data);
+      } else {
+        const allLocalSubs: any[] = [];
+        const localStudents = localStorage.getItem('acob_student_profiles');
+        const studs = localStudents ? JSON.parse(localStudents) : [];
+        studs.forEach((s: any) => {
+          const local = localStorage.getItem(`acob_local_submissions_${s.id}`);
+          if (local) allLocalSubs.push(...JSON.parse(local));
+        });
+        setAllSubmissions(allLocalSubs);
+      }
+    } catch (err: any) {
+      console.error('Error loading submissions:', err);
+    }
+  };
+
+  const handleResetSubmission = async (submissionId: string) => {
+    if (!confirm('Are you sure you want to reset this student\'s exam submission? This will permanently delete their answers and allow them to take the exam again.')) return;
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('exam_submissions').delete().eq('id', submissionId);
+        if (error) throw error;
+      } else {
+        const sub = allSubmissions.find(s => s.id === submissionId);
+        if (sub) {
+          const localKey = `acob_local_submissions_${sub.student_id}`;
+          const local = localStorage.getItem(localKey);
+          if (local) {
+            const list = JSON.parse(local).filter((s: any) => s.id !== submissionId);
+            localStorage.setItem(localKey, JSON.stringify(list));
+          }
+        }
+      }
+      showToast('Exam submission successfully reset.');
+      await loadSubmissions();
+    } catch (err: any) {
+      console.error(err);
+      showError('Failed to reset exam submission.');
+    }
+  };
+
+  const handleTogglePublishResults = async () => {
+    if (!selectedOlympiadForParticipants) return;
+    const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
+    if (!associatedExam) {
+      showError('No exam is configured for this event yet.');
+      return;
+    }
+
+    const currentPublished = associatedExam.results_published || false;
+    const nextPublished = !currentPublished;
+
+    setStatusMsg(nextPublished ? 'Publishing Results...' : 'Unpublishing Results...');
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase
+          .from('exams')
+          .update({ results_published: nextPublished })
+          .eq('id', associatedExam.id);
+        if (error) throw error;
+      }
+      
+      const updatedExams = examsList.map(e => e.id === associatedExam.id ? { ...e, results_published: nextPublished } : e);
+      setExamsList(updatedExams);
+      localStorage.setItem('acob_local_exams', JSON.stringify(updatedExams));
+      
+      showToast(nextPublished ? 'Results published successfully!' : 'Results unpublished successfully!');
+    } catch (err) {
+      console.error(err);
+      showError('Failed to update result publication status.');
+    }
+  };
+
+  const getParticipantStats = (studentId: string, associatedExam: any) => {
+    if (!associatedExam) return { status: 'no_exam', score: 0, total: 0, rankText: '-' };
+    const submission = allSubmissions.find(sub => sub.exam_id === associatedExam.id && sub.student_id === studentId);
+    if (!submission) return { status: 'not_started', score: 0, total: 0, rankText: '-' };
+
+    let score = 0;
+    let total = 0;
+    participantsQuestions.forEach(q => {
+      total += q.points;
+      if (q.type === 'mcq') {
+        if (submission.answers && submission.answers[q.id] === q.correct_option_index) {
+          score += q.points;
+        }
+      }
+    });
+
+    let rankText = '-';
+    if (submission.status === 'submitted') {
+      const enrolledStudents = students.filter(s => {
+        const eventsList = parseEventsList(s.registered_events);
+        return eventsList.includes(associatedExam.event_id);
+      });
+
+      const scoredSubmissions = enrolledStudents
+        .map(s => {
+          const sub = allSubmissions.find(sub => sub.exam_id === associatedExam.id && sub.student_id === s.id && sub.status === 'submitted');
+          if (!sub) return null;
+          
+          let subScore = 0;
+          participantsQuestions.forEach(q => {
+            if (q.type === 'mcq') {
+              if (sub.answers && sub.answers[q.id] === q.correct_option_index) {
+                subScore += q.points;
+              }
+            }
+          });
+          return { studentId: s.id, score: subScore, timeTaken: sub.time_taken || 999999 };
+        })
+        .filter((item): item is { studentId: string; score: number; timeTaken: number } => item !== null);
+
+      scoredSubmissions.sort((a, b) => {
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        return a.timeTaken - b.timeTaken;
+      });
+
+      const index = scoredSubmissions.findIndex(s => s.studentId === studentId);
+      if (index !== -1) {
+        const rank = index + 1;
+        if (rank === 1) rankText = '1st';
+        else if (rank === 2) rankText = '2nd';
+        else if (rank === 3) rankText = '3rd';
+        else rankText = `${rank}th`;
+      }
+    }
+
+    return {
+      status: submission.status,
+      score,
+      total,
+      rankText,
+      warningsCount: submission.warnings_count,
+      timeTaken: submission.time_taken,
+      version: submission.version_selected
+    };
+  };
+
+  const handleViewAnswers = async (submission: any) => {
+    setViewingSubmission(submission);
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('exam_questions')
+          .select('*')
+          .eq('exam_id', submission.exam_id)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        if (data) setViewingSubmissionQuestions(data);
+      } catch (err: any) {
+        console.error('Error loading submission questions:', err);
+      }
+    } else {
+      const localQuestions = localStorage.getItem(`acob_local_questions_${submission.exam_id}`);
+      setViewingSubmissionQuestions(localQuestions ? JSON.parse(localQuestions) : []);
+    }
+  };
+
+  const handleSelectExam = async (exam: any) => {
+    setSelectedExam(exam);
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('exam_questions')
+          .select('*')
+          .eq('exam_id', exam.id)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        if (data) setExamQuestions(data);
+      } catch (err: any) {
+        console.error('Error loading questions:', err);
+      }
+    } else {
+      const localQuestions = localStorage.getItem(`acob_local_questions_${exam.id}`);
+      setExamQuestions(localQuestions ? JSON.parse(localQuestions) : []);
+    }
+  };
+
+  const handleSaveExam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!examForm.event_id || !examForm.title.trim() || !examForm.start_date || !examForm.end_date) {
+      showError('Please fill out all fields.');
+      return;
+    }
+
+    setStatusMsg('Saving Exam...');
+    const examPayload = {
+      event_id: examForm.event_id,
+      title: examForm.title,
+      start_date: new Date(examForm.start_date).toISOString(),
+      end_date: new Date(examForm.end_date).toISOString(),
+      is_live_for_admin_only: examForm.is_live_for_admin_only,
+      results_published: examForm.results_published || false,
+      duration: examForm.duration ? parseInt(examForm.duration as any) : 60,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      if (isSupabaseConfigured()) {
+        if (editingExamId) {
+          const { error } = await supabase
+            .from('exams')
+            .update(examPayload)
+            .eq('id', editingExamId);
+          if (error) throw error;
+          showToast('Exam updated successfully!');
+        } else {
+          const { error } = await supabase
+            .from('exams')
+            .insert([examPayload]);
+          if (error) throw error;
+          showToast('Exam created successfully!');
+        }
+      } else {
+        let updatedExams = [...examsList];
+        if (editingExamId) {
+          updatedExams = updatedExams.map(ex => ex.id === editingExamId ? { ...ex, ...examPayload } : ex);
+        } else {
+          const newExam = {
+            ...examPayload,
+            id: 'local-' + Math.random().toString(36).substring(2, 9),
+            created_at: new Date().toISOString()
+          };
+          updatedExams.push(newExam);
+        }
+        localStorage.setItem('acob_local_exams', JSON.stringify(updatedExams));
+        setExamsList(updatedExams);
+        showToast(editingExamId ? 'Exam updated locally!' : 'Exam created locally!');
+      }
+      setShowExamModal(false);
+      loadExams();
+    } catch (err: any) {
+      console.error(err);
+      showError(`Failed to save exam: ${err.message}`);
+    }
+  };
+
+  const handleDeleteExam = async (examId: string) => {
+    if (!confirm('Are you sure you want to delete this exam? This will delete all questions and submissions.')) return;
+    setStatusMsg('Deleting Exam...');
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('exams').delete().eq('id', examId);
+        if (error) throw error;
+      } else {
+        const updated = examsList.filter(ex => ex.id !== examId);
+        localStorage.setItem('acob_local_exams', JSON.stringify(updated));
+        setExamsList(updated);
+        localStorage.removeItem(`acob_local_questions_${examId}`);
+      }
+      if (selectedExam?.id === examId) {
+        setSelectedExam(null);
+        setExamQuestions([]);
+      }
+      showToast('Exam deleted successfully!');
+      loadExams();
+    } catch (err: any) {
+      console.error(err);
+      showError(`Failed to delete exam: ${err.message}`);
+    }
+  };
+
+  const handleSaveQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExam) return;
+    if (!questionForm.question_text.trim()) {
+      showError('Question text is required.');
+      return;
+    }
+
+    setStatusMsg('Saving Question...');
+    const questionPayload = {
+      exam_id: selectedExam.id,
+      instruction: questionForm.instruction || null,
+      question_text: questionForm.question_text,
+      type: questionForm.type,
+      options: questionForm.type === 'mcq' ? questionForm.options : null,
+      correct_option_index: questionForm.type === 'mcq' ? Number(questionForm.correct_option_index) : null,
+      points: Number(questionForm.points),
+      version: questionForm.version
+    };
+
+    try {
+      if (isSupabaseConfigured()) {
+        if (editingQuestionId) {
+          const { error } = await supabase
+            .from('exam_questions')
+            .update(questionPayload)
+            .eq('id', editingQuestionId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('exam_questions')
+            .insert([questionPayload]);
+          if (error) throw error;
+        }
+      } else {
+        let updatedQuestions = [...examQuestions];
+        if (editingQuestionId) {
+          updatedQuestions = updatedQuestions.map(q => q.id === editingQuestionId ? { ...q, ...questionPayload } : q);
+        } else {
+          const newQ = {
+            ...questionPayload,
+            id: 'q-' + Math.random().toString(36).substring(2, 9),
+            created_at: new Date().toISOString()
+          };
+          updatedQuestions.push(newQ);
+        }
+        localStorage.setItem(`acob_local_questions_${selectedExam.id}`, JSON.stringify(updatedQuestions));
+        setExamQuestions(updatedQuestions);
+      }
+      showToast('Question saved successfully!');
+      setShowQuestionModal(false);
+      handleSelectExam(selectedExam);
+    } catch (err: any) {
+      console.error(err);
+      showError(`Failed to save question: ${err.message}`);
+    }
+  };
+
+  const handleDeleteQuestion = async (questionId: string) => {
+    if (!confirm('Are you sure you want to delete this question?')) return;
+    setStatusMsg('Deleting Question...');
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('exam_questions').delete().eq('id', questionId);
+        if (error) throw error;
+      } else {
+        const updated = examQuestions.filter(q => q.id !== questionId);
+        localStorage.setItem(`acob_local_questions_${selectedExam.id}`, JSON.stringify(updated));
+        setExamQuestions(updated);
+      }
+      showToast('Question deleted successfully!');
+      handleSelectExam(selectedExam);
+    } catch (err: any) {
+      console.error(err);
+      showError(`Failed to delete question: ${err.message}`);
+    }
+  };
+
 
 
   // ----------------------------------------------------
@@ -223,6 +629,7 @@ export default function AdminDashboardPage() {
 
       const localAdmins = localStorage.getItem('acob_admin_accounts');
       if (localAdmins) setAdminAccounts(JSON.parse(localAdmins));
+      loadExams();
       loadStudents();
       return;
     }
@@ -290,6 +697,9 @@ export default function AdminDashboardPage() {
       if (adminsData && adminsData.content && Array.isArray(adminsData.content.accounts)) {
         setAdminAccounts(adminsData.content.accounts);
       }
+
+      // Fetch Exams
+      await loadExams();
     } catch (err: any) {
       console.error('Error loading data:', err);
     } finally {
@@ -302,6 +712,37 @@ export default function AdminDashboardPage() {
       loadAllData();
     }
   }, [loading, session]);
+
+  useEffect(() => {
+    const loadParticipantsQuestions = async () => {
+      if (!selectedOlympiadForParticipants) {
+        setParticipantsQuestions([]);
+        return;
+      }
+      const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
+      if (!associatedExam) {
+        setParticipantsQuestions([]);
+        return;
+      }
+
+      try {
+        if (isSupabaseConfigured()) {
+          const { data, error } = await supabase
+            .from('exam_questions')
+            .select('*')
+            .eq('exam_id', associatedExam.id);
+          if (error) throw error;
+          if (data) setParticipantsQuestions(data);
+        } else {
+          const local = localStorage.getItem(`acob_local_questions_${associatedExam.id}`);
+          setParticipantsQuestions(local ? JSON.parse(local) : []);
+        }
+      } catch (err) {
+        console.error('Error loading questions for rankings:', err);
+      }
+    };
+    loadParticipantsQuestions();
+  }, [selectedOlympiadForParticipants, examsList]);
 
   // ----------------------------------------------------
   // CMS ACTIONS FOR EACH PAGE
@@ -766,7 +1207,7 @@ export default function AdminDashboardPage() {
         email: '',
         password: '',
         role: 'admin',
-        permissions: ['cms', 'certificates', 'resources', 'events']
+        permissions: ['cms', 'certificates', 'resources', 'events', 'participants', 'exams']
       });
     } catch (err: any) {
       console.error(err);
@@ -926,7 +1367,7 @@ export default function AdminDashboardPage() {
             </button>
           )}
 
-          {hasPermission('events') && (
+          {(hasPermission('participants') || hasPermission('events')) && (
             <button
               onClick={() => {
                 setActiveTab('participants');
@@ -938,6 +1379,22 @@ export default function AdminDashboardPage() {
             >
               <Users size={15} />
               <span>Olympiad Participants</span>
+            </button>
+          )}
+
+          {(hasPermission('exams') || hasPermission('events')) && (
+            <button
+              onClick={() => {
+                setActiveTab('exams');
+                setSelectedExam(null);
+                setExamQuestions([]);
+              }}
+              className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2.5 transition-all ${
+                activeTab === 'exams' ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/10' : 'text-neutral-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShieldCheck size={15} className="text-purple-400" />
+              <span>Exams Console</span>
             </button>
           )}
 
@@ -1666,6 +2123,272 @@ export default function AdminDashboardPage() {
               </motion.div>
             )}
 
+            {/* EXAMS CONSOLE TAB */}
+            {activeTab === 'exams' && (hasPermission('exams') || hasPermission('events')) && (
+              <motion.div
+                key="exams"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Exams Console</h2>
+                    <p className="text-xs text-neutral-500">Configure exams, start/end dates, and manage question sheets for Olympiad events.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Left Column: Events & Exam Statuses */}
+                  <div className="lg:col-span-5 space-y-4">
+                    <h3 className="text-xs font-bold font-mono text-neutral-400 uppercase tracking-widest border-b border-white/5 pb-2">Olympiad Events</h3>
+                    
+                    {[...events, ...archivedEvents].length === 0 ? (
+                      <div className="p-8 text-center text-neutral-500 text-xs border border-dashed border-white/10 rounded-2xl">
+                        No Olympiad events available. Create events in the Olympiad Manager first.
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+                        {[...events, ...archivedEvents].map((ev) => {
+                          const configuredExam = examsList.find(ex => ex.event_id === ev.id);
+                          const isSelected = selectedExam && configuredExam && selectedExam.id === configuredExam.id;
+
+                          return (
+                            <div 
+                              key={ev.id} 
+                              className={`p-4 rounded-xl border transition-all ${
+                                isSelected 
+                                  ? 'bg-purple-950/20 border-purple-500' 
+                                  : 'bg-neutral-950 border-white/10 hover:border-white/20'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-1 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-white/10 rounded text-neutral-400">
+                                      {ev.id}
+                                    </span>
+                                    {configuredExam ? (
+                                      configuredExam.is_live_for_admin_only ? (
+                                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/20 rounded text-yellow-500">
+                                          Admin Only
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-green-500/10 border border-green-500/20 rounded text-green-400">
+                                          Configured
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 rounded text-red-400">
+                                        No Exam
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="text-xs font-bold text-white line-clamp-1">{ev.title}</h4>
+                                  
+                                  {configuredExam && (
+                                    <div className="text-[10px] text-neutral-400 space-y-0.5">
+                                      <div><span className="text-neutral-500">Starts:</span> {new Date(configuredExam.start_date).toLocaleString()}</div>
+                                      <div><span className="text-neutral-500">Ends:</span> {new Date(configuredExam.end_date).toLocaleString()}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-white/5">
+                                {configuredExam ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleSelectExam(configuredExam)}
+                                      className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-[10px] font-bold transition-all flex items-center gap-1"
+                                    >
+                                      <BookOpen size={10} />
+                                      <span>Questions</span>
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingExamId(configuredExam.id);
+                                        setExamForm({
+                                          id: configuredExam.id,
+                                          event_id: configuredExam.event_id,
+                                          title: configuredExam.title,
+                                          start_date: new Date(configuredExam.start_date).toISOString().slice(0, 16),
+                                          end_date: new Date(configuredExam.end_date).toISOString().slice(0, 16),
+                                          is_live_for_admin_only: configuredExam.is_live_for_admin_only,
+                                          results_published: configuredExam.results_published || false,
+                                          duration: configuredExam.duration || 60
+                                        });
+                                        setShowExamModal(true);
+                                      }}
+                                      className="p-1 bg-neutral-900 border border-white/10 hover:border-white/20 text-neutral-400 hover:text-white rounded transition-all"
+                                      title="Edit Dates/Settings"
+                                    >
+                                      <Edit3 size={11} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteExam(configuredExam.id)}
+                                      className="p-1 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 rounded transition-all"
+                                      title="Delete Exam"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setEditingExamId(null);
+                                      setExamForm({
+                                        id: '',
+                                        event_id: ev.id,
+                                        title: ev.title + ' Exam',
+                                        start_date: '',
+                                        end_date: '',
+                                        is_live_for_admin_only: false,
+                                        results_published: false,
+                                        duration: 60
+                                      });
+                                      setShowExamModal(true);
+                                    }}
+                                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-[10px] font-bold transition-all flex items-center gap-1"
+                                  >
+                                    <Plus size={10} />
+                                    <span>Configure Exam</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Questions Manager for selected Exam */}
+                  <div className="lg:col-span-7 space-y-4">
+                    {selectedExam ? (
+                      <div className="bg-neutral-950 border border-white/10 rounded-2xl p-5 space-y-4">
+                        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-neutral-500 font-mono">Exam Questions Manager</span>
+                            <h3 className="text-sm font-bold text-white line-clamp-1">{selectedExam.title}</h3>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditingQuestionId(null);
+                              setQuestionForm({
+                                id: '',
+                                instruction: '',
+                                question_text: '',
+                                type: 'mcq',
+                                options: ['', '', '', ''],
+                                correct_option_index: 0,
+                                points: 1,
+                                version: 'both'
+                              });
+                              setShowQuestionModal(true);
+                            }}
+                            className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white rounded-xl text-[10px] font-bold transition-all flex items-center gap-1"
+                          >
+                            <Plus size={11} />
+                            <span>Add Question</span>
+                          </button>
+                        </div>
+
+                        {examQuestions.length === 0 ? (
+                          <div className="py-12 text-center text-neutral-500 text-xs border border-dashed border-white/5 rounded-xl">
+                            No questions added yet. Click "Add Question" to build your exam sheet.
+                          </div>
+                        ) : (
+                          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                            {examQuestions.map((q, idx) => (
+                              <div key={q.id || idx} className="bg-white/[0.01] border border-white/5 rounded-xl p-4 space-y-3 relative">
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded text-purple-400 uppercase">
+                                        Q{idx + 1} - {q.type}
+                                      </span>
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400">
+                                        {q.points} pt{q.points > 1 ? 's' : ''}
+                                      </span>
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-white/10 rounded text-neutral-400 uppercase">
+                                        Version: {q.version}
+                                      </span>
+                                    </div>
+                                    {q.instruction && (
+                                      <p className="text-[11px] italic text-neutral-400 bg-white/[0.02] p-2 border border-white/5 rounded-lg">
+                                        <strong className="text-neutral-500 font-sans not-italic block text-[9px] uppercase font-bold tracking-wider mb-0.5">Instruction:</strong>
+                                        {q.instruction}
+                                      </p>
+                                    )}
+                                    <p className="text-xs font-semibold text-white whitespace-pre-wrap">{q.question_text}</p>
+                                  </div>
+
+                                  <div className="flex gap-1 shrink-0">
+                                    <button
+                                      onClick={() => {
+                                        setEditingQuestionId(q.id);
+                                        setQuestionForm({
+                                          id: q.id,
+                                          instruction: q.instruction || '',
+                                          question_text: q.question_text,
+                                          type: q.type,
+                                          options: q.options || ['', '', '', ''],
+                                          correct_option_index: q.correct_option_index || 0,
+                                          points: q.points || 1,
+                                          version: q.version || 'both'
+                                        });
+                                        setShowQuestionModal(true);
+                                      }}
+                                      className="p-1 bg-neutral-900 border border-white/5 hover:border-white/10 rounded text-neutral-400 hover:text-white"
+                                    >
+                                      <Edit3 size={11} />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteQuestion(q.id)}
+                                      className="p-1 bg-red-500/5 border border-red-500/10 hover:bg-red-500/20 rounded text-red-400"
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {q.type === 'mcq' && q.options && (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 pt-2 border-t border-white/[0.03]">
+                                    {q.options.map((opt: string, optIdx: number) => {
+                                      const isCorrect = optIdx === q.correct_option_index;
+                                      return (
+                                        <div 
+                                          key={optIdx} 
+                                          className={`px-3 py-2 rounded-lg text-[11px] flex items-center justify-between border ${
+                                            isCorrect 
+                                              ? 'bg-green-500/10 border-green-500/30 text-green-400 font-bold' 
+                                              : 'bg-white/[0.01] border-white/5 text-neutral-300'
+                                          }`}
+                                        >
+                                          <span>{opt}</span>
+                                          {isCorrect && <span className="text-[8px] uppercase font-mono px-1 py-0.5 bg-green-500/20 rounded text-green-300">Correct</span>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center p-8 border border-dashed border-white/10 rounded-2xl text-center text-neutral-500 text-xs">
+                        <BookOpen size={24} className="text-neutral-600 mb-2" />
+                        <span>Select an event exam from the list on the left to manage questions.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
             {/* 6. ADMINS MANAGEMENT TAB (DEVELOPER ONLY) */}
             {activeTab === 'admins' && isDeveloper && (
               <motion.div
@@ -1685,7 +2408,7 @@ export default function AdminDashboardPage() {
                         email: '',
                         password: '',
                         role: 'admin',
-                        permissions: ['cms', 'certificates', 'resources', 'events']
+                        permissions: ['cms', 'certificates', 'resources', 'events', 'participants', 'exams']
                       });
                       setShowAdminModal(true);
                     }}
@@ -1761,7 +2484,7 @@ export default function AdminDashboardPage() {
             )}
 
             {/* 7. OLYMPIAD PARTICIPANTS TAB */}
-            {activeTab === 'participants' && (
+            {activeTab === 'participants' && (hasPermission('participants') || hasPermission('events')) && (
               <motion.div
                 key="participants"
                 initial={{ opacity: 0 }}
@@ -1917,6 +2640,24 @@ export default function AdminDashboardPage() {
                       </div>
 
                       <div className="flex gap-2 shrink-0">
+                        {(() => {
+                          const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
+                          if (!associatedExam) return null;
+                          return (
+                            <button
+                              onClick={handleTogglePublishResults}
+                              className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                associatedExam.results_published
+                                  ? 'bg-green-500/10 border-green-500/20 text-green-400 hover:bg-green-500/20'
+                                  : 'bg-purple-600 border-purple-500/20 hover:bg-purple-500 text-white'
+                              }`}
+                            >
+                              <Award size={13} />
+                              <span>{associatedExam.results_published ? 'Results Published' : 'Publish Results'}</span>
+                            </button>
+                          );
+                        })()}
+
                         <button
                           onClick={() => {
                             setBulkEmailSubject(`Notice regarding ${selectedOlympiadForParticipants.title}`);
@@ -1974,6 +2715,7 @@ export default function AdminDashboardPage() {
                                 <th className="py-3 px-5">Student Details</th>
                                 <th className="py-3 px-5">Account Credentials</th>
                                 <th className="py-3 px-5">Institution & Class</th>
+                                <th className="py-3 px-5">Exam Status</th>
                                 <th className="py-3 px-5 text-right">Actions</th>
                               </tr>
                             </thead>
@@ -1993,51 +2735,120 @@ export default function AdminDashboardPage() {
                                     (s.grade || '').toLowerCase().includes(query)
                                   );
                                 })
-                                .map((student) => (
-                                  <tr key={student.id} className="hover:bg-white/[0.01]">
-                                    <td className="py-3.5 px-5">
-                                      <div className="flex items-center gap-3">
-                                        <img
-                                          src={student.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(student.full_name || '')}`}
-                                          alt=""
-                                          className="w-7 h-7 rounded-full bg-white/5 border border-white/10 shrink-0"
-                                        />
-                                        <div>
-                                          <div className="font-semibold text-white">{student.full_name}</div>
-                                          <div className="text-[10px] text-neutral-500 font-mono">{student.phone || 'No phone number'}</div>
+                                .map((student) => {
+                                  const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
+                                  const submission = associatedExam 
+                                    ? allSubmissions.find(sub => sub.exam_id === associatedExam.id && sub.student_id === student.id)
+                                    : null;
+                                  
+                                  return (
+                                    <tr key={student.id} className="hover:bg-white/[0.01]">
+                                      <td className="py-3.5 px-5">
+                                        <div className="flex items-center gap-3">
+                                          <img
+                                            src={student.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(student.full_name || '')}`}
+                                            alt=""
+                                            className="w-7 h-7 rounded-full bg-white/5 border border-white/10 shrink-0"
+                                          />
+                                          <div>
+                                            <div className="font-semibold text-white">{student.full_name}</div>
+                                            <div className="text-[10px] text-neutral-500 font-mono">{student.phone || 'No phone number'}</div>
+                                          </div>
                                         </div>
-                                      </div>
-                                    </td>
-                                    <td className="py-3.5 px-5 space-y-0.5">
-                                      <div className="text-white font-medium">{student.email}</div>
-                                      <div className="flex items-center gap-1.5 text-[10px]">
-                                        <span className="text-neutral-500">Password:</span>
-                                        <span className="font-mono text-purple-400 bg-purple-500/5 px-1 py-0.2 rounded border border-purple-500/10">
-                                          {student.password_plain || '🔒 (Encrypted)'}
-                                        </span>
-                                      </div>
-                                    </td>
-                                    <td className="py-3.5 px-5">
-                                      <div className="text-neutral-300 font-medium">{student.school}</div>
-                                      <div className="text-[10px] text-neutral-500 font-mono">{student.grade}</div>
-                                    </td>
-                                    <td className="py-3.5 px-5 text-right">
-                                      <div className="flex gap-2 justify-end items-center">
-                                        <button
-                                          onClick={() => {
-                                            setCertForm({
-                                              student_name: student.full_name,
-                                              event_name: selectedOlympiadForParticipants.title,
-                                              achievement: 'Participation Certificate',
-                                              issue_date: new Date().toISOString().split('T')[0]
-                                            });
-                                            setShowCertModal(true);
-                                          }}
-                                          title="Issue Certificate"
-                                          className="p-1.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded hover:bg-purple-500/20 transition-colors"
-                                        >
-                                          <Award size={12} />
-                                        </button>
+                                      </td>
+                                      <td className="py-3.5 px-5 space-y-0.5">
+                                        <div className="text-white font-medium">{student.email}</div>
+                                        <div className="flex items-center gap-1.5 text-[10px]">
+                                          <span className="text-neutral-500">Password:</span>
+                                          <span className="font-mono text-purple-400 bg-purple-500/5 px-1 py-0.2 rounded border border-purple-500/10">
+                                            {student.password_plain || '🔒 (Encrypted)'}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="py-3.5 px-5">
+                                        <div className="text-neutral-300 font-medium">{student.school}</div>
+                                        <div className="text-[10px] text-neutral-500 font-mono">{student.grade}</div>
+                                      </td>
+                                      <td className="py-3.5 px-5">
+                                        {(() => {
+                                          const stats = getParticipantStats(student.id, associatedExam);
+                                          if (!associatedExam) {
+                                            return <span className="text-[10px] text-neutral-600 italic">No linked exam</span>;
+                                          }
+                                          if (stats.status === 'not_started') {
+                                            return (
+                                              <span className="text-[10px] font-mono px-2 py-0.5 bg-neutral-900 border border-white/5 text-neutral-400 rounded-full font-bold">
+                                                Not Started
+                                              </span>
+                                            );
+                                          }
+                                          return (
+                                            <div className="space-y-1">
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                {stats.status === 'disqualified' ? (
+                                                  <span className="text-[10px] font-mono px-2 py-0.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-full font-bold">
+                                                    Disqualified
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-[10px] font-mono px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-full font-bold">
+                                                    Submitted
+                                                  </span>
+                                                )}
+                                                {stats.rankText !== '-' && (
+                                                  <span className="text-[10px] font-mono px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full font-bold">
+                                                    Rank: {stats.rankText}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-[9px] text-neutral-500 font-mono space-y-0.5">
+                                                <div>Marks: <span className="text-purple-400 font-bold">{stats.score} / {stats.total}</span></div>
+                                                <div>Warnings: <span className={stats.warningsCount > 0 ? "text-yellow-500 font-bold" : ""}>{stats.warningsCount}</span></div>
+                                                <div>Time: {(() => {
+                                                  const m = Math.floor((stats.timeTaken || 0) / 60);
+                                                  const s = (stats.timeTaken || 0) % 60;
+                                                  return `${m}m ${s}s`;
+                                                })()}</div>
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
+                                      </td>
+                                      <td className="py-3.5 px-5 text-right">
+                                        <div className="flex gap-2 justify-end items-center">
+                                          {submission && (
+                                            <>
+                                              <button
+                                                onClick={() => handleViewAnswers(submission)}
+                                                title="View Submitted Answers"
+                                                className="p-1.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded hover:bg-purple-500/20 transition-colors"
+                                              >
+                                                <Eye size={12} />
+                                              </button>
+                                              <button
+                                                onClick={() => handleResetSubmission(submission.id)}
+                                                title="Reset & Restart Exam"
+                                                className="p-1.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                                              >
+                                                <RotateCcw size={12} />
+                                              </button>
+                                            </>
+                                          )}
+                                          
+                                          <button
+                                            onClick={() => {
+                                              setCertForm({
+                                                student_name: student.full_name,
+                                                event_name: selectedOlympiadForParticipants.title,
+                                                achievement: 'Participation Certificate',
+                                                issue_date: new Date().toISOString().split('T')[0]
+                                              });
+                                              setShowCertModal(true);
+                                            }}
+                                            title="Issue Certificate"
+                                            className="p-1.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded hover:bg-purple-500/20 transition-colors"
+                                          >
+                                            <Award size={12} />
+                                          </button>
 
                                         <button
                                           onClick={() => {
@@ -2110,14 +2921,15 @@ export default function AdminDashboardPage() {
                                       </div>
                                     </td>
                                   </tr>
-                                ))}
+                                );
+                              })}
 
                               {students.filter(s => {
                                 const eventsList = parseEventsList(s.registered_events);
                                 return eventsList.includes(selectedOlympiadForParticipants.id);
                               }).length === 0 && (
                                 <tr>
-                                  <td colSpan={4} className="py-10 text-center text-neutral-500 font-mono">
+                                  <td colSpan={5} className="py-10 text-center text-neutral-500 font-mono">
                                     No participants enrolled in this Olympiad yet.
                                   </td>
                                 </tr>
@@ -2314,6 +3126,378 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+      {/* View Exam Answers Modal */}
+      {viewingSubmission && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-3xl p-6 max-w-2xl w-full shadow-2xl relative flex flex-col max-h-[85vh] text-left">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-white/5 pb-4 mb-4">
+              <div>
+                <span className="text-[10px] font-mono tracking-widest text-purple-400 font-bold uppercase">Participant Exam Script</span>
+                <h3 className="text-base font-extrabold text-white">
+                  Answers Viewer
+                </h3>
+                <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
+                  Submission ID: {viewingSubmission.id} • Version: <span className="capitalize text-neutral-300 font-bold">{viewingSubmission.version_selected || 'Common'}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingSubmission(null);
+                  setViewingSubmissionQuestions([]);
+                }}
+                className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-400 hover:text-white transition-colors text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Script Stats Banner */}
+            <div className="grid grid-cols-3 gap-3 p-3 bg-white/[0.02] border border-white/5 rounded-2xl text-xs font-mono mb-4">
+              <div>
+                <span className="text-neutral-500 block text-[9px] uppercase">Status</span>
+                <span className={`font-bold capitalize ${viewingSubmission.status === 'disqualified' ? 'text-red-500' : 'text-green-500'}`}>
+                  {viewingSubmission.status}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[9px] uppercase">Time Taken</span>
+                <span className="text-neutral-200 font-bold">
+                  {Math.floor(viewingSubmission.time_taken / 60)}m {viewingSubmission.time_taken % 60}s
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-500 block text-[9px] uppercase">Security Warnings</span>
+                <span className={`font-bold ${viewingSubmission.warnings_count > 0 ? 'text-yellow-500' : 'text-neutral-400'}`}>
+                  {viewingSubmission.warnings_count} Warnings
+                </span>
+              </div>
+            </div>
+
+            {/* Questions and Answers sheet */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+              {viewingSubmissionQuestions.length === 0 ? (
+                <div className="text-center py-8 text-neutral-500 text-xs">
+                  Loading exam questions...
+                </div>
+              ) : (
+                viewingSubmissionQuestions.map((q, idx) => {
+                  const studentAns = viewingSubmission.answers?.[q.id];
+                  const isCorrect = q.type === 'mcq' && studentAns === q.correct_option_index;
+
+                  return (
+                    <div key={q.id} className="p-4 bg-neutral-900 border border-white/5 rounded-2xl space-y-2">
+                      <div className="flex justify-between items-center text-[10px] font-mono">
+                        <span className="text-purple-400 font-bold">Question {idx + 1} ({q.type.toUpperCase()})</span>
+                        <span className="text-neutral-500">{q.points} Points</span>
+                      </div>
+                      
+                      <p className="text-xs font-semibold text-white">{q.question_text}</p>
+                      
+                      {q.type === 'mcq' && q.options && Array.isArray(q.options) && (
+                        <div className="space-y-1.5 pt-1 text-xs">
+                          {q.options.map((opt: string, oIdx: number) => {
+                            const isSelected = studentAns === oIdx;
+                            const isCorrectAns = q.correct_option_index === oIdx;
+                            
+                            let optStyle = "bg-white/[0.01] border-white/5 text-neutral-400";
+                            if (isSelected) {
+                              optStyle = isCorrect ? "bg-green-500/10 border-green-500/30 text-green-400" : "bg-red-500/10 border-red-500/30 text-red-400";
+                            } else if (isCorrectAns) {
+                              optStyle = "bg-green-500/5 border-green-500/10 text-green-500 font-semibold";
+                            }
+
+                            return (
+                              <div key={oIdx} className={`p-2.5 rounded-xl border flex justify-between items-center ${optStyle}`}>
+                                <span>{opt}</span>
+                                {isSelected && (isCorrect ? <span>✓ Chosen</span> : <span>✗ Chosen</span>)}
+                                {!isSelected && isCorrectAns && <span className="text-[10px] uppercase font-mono text-green-500">Correct</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {q.type === 'broad' && (
+                        <div className="pt-1.5 space-y-1">
+                          <span className="text-[9px] uppercase font-mono text-neutral-500 block">Student Response:</span>
+                          <div className="p-3 bg-neutral-950 border border-white/5 rounded-xl text-xs text-neutral-300 whitespace-pre-wrap">
+                            {studentAns || <span className="text-neutral-600 italic">No answer submitted</span>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-white/5 pt-4 mt-4 flex justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  handleResetSubmission(viewingSubmission.id);
+                  setViewingSubmission(null);
+                  setViewingSubmissionQuestions([]);
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Reset Submission
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingSubmission(null);
+                  setViewingSubmissionQuestions([]);
+                }}
+                className="px-4 py-2 bg-neutral-900 border border-white/10 hover:bg-neutral-800 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Close Script
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Exam Modal */}
+      {showExamModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-purple-400 flex items-center gap-1.5">
+              <ShieldCheck size={16} />
+              <span>{editingExamId ? 'Edit Exam' : 'Configure Exam'}</span>
+            </h3>
+
+            <form onSubmit={handleSaveExam} className="space-y-3.5 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Olympiad Event Slug</label>
+                <input
+                  type="text"
+                  disabled
+                  value={examForm.event_id}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none opacity-60"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Exam Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Senior Category Logical Exam"
+                  value={examForm.title}
+                  onChange={(e) => setExamForm({ ...examForm, title: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Start Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={examForm.start_date}
+                    onChange={(e) => setExamForm({ ...examForm, start_date: e.target.value })}
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">End Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={examForm.end_date}
+                    onChange={(e) => setExamForm({ ...examForm, end_date: e.target.value })}
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Exam Duration (Minutes)</label>
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  placeholder="e.g. 60"
+                  value={examForm.duration || ''}
+                  onChange={(e) => setExamForm({ ...examForm, duration: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                <div>
+                  <label className="block text-[11px] font-bold text-white">Live for Admins Only</label>
+                  <p className="text-[9px] text-neutral-400">Keep it visible only to khanjariff09@gmail.com for testing.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={examForm.is_live_for_admin_only}
+                  onChange={(e) => setExamForm({ ...examForm, is_live_for_admin_only: e.target.checked })}
+                  className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 bg-neutral-900 border-white/10"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                <div>
+                  <label className="block text-[11px] font-bold text-white">Publish Results</label>
+                  <p className="text-[9px] text-neutral-400">Allow students to view their score and ranking on their dashboard.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={examForm.results_published}
+                  onChange={(e) => setExamForm({ ...examForm, results_published: e.target.checked })}
+                  className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 bg-neutral-900 border-white/10"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowExamModal(false)}
+                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-xs font-semibold"
+                >
+                  Save Exam
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Question Modal */}
+      {showQuestionModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-cyan-400 flex items-center gap-1.5">
+              <Plus size={16} />
+              <span>{editingQuestionId ? 'Edit Question' : 'Add New Question'}</span>
+            </h3>
+
+            <form onSubmit={handleSaveQuestion} className="space-y-3.5 text-left">
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Brief Instruction (Optional)</label>
+                <textarea
+                  placeholder="e.g. Read the passage and answer the logical deduction question."
+                  rows={2}
+                  value={questionForm.instruction}
+                  onChange={(e) => setQuestionForm({ ...questionForm, instruction: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Question Text</label>
+                <textarea
+                  required
+                  placeholder="Type the question content here..."
+                  rows={3}
+                  value={questionForm.question_text}
+                  onChange={(e) => setQuestionForm({ ...questionForm, question_text: e.target.value })}
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Question Type</label>
+                  <select
+                    value={questionForm.type}
+                    onChange={(e) => setQuestionForm({ ...questionForm, type: e.target.value, options: e.target.value === 'mcq' ? ['', '', '', ''] : [] })}
+                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  >
+                    <option value="mcq">Multiple Choice (MCQ)</option>
+                    <option value="broad">Broad / Written</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Version Group</label>
+                  <select
+                    value={questionForm.version}
+                    onChange={(e) => setQuestionForm({ ...questionForm, version: e.target.value })}
+                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  >
+                    <option value="both">Both (Common)</option>
+                    <option value="english">English version</option>
+                    <option value="bangla">Bangla version</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Points / Marks</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    value={questionForm.points}
+                    onChange={(e) => setQuestionForm({ ...questionForm, points: Number(e.target.value) })}
+                    className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {questionForm.type === 'mcq' && (
+                <div className="space-y-2.5 p-3 bg-white/[0.01] border border-white/5 rounded-xl">
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider">MCQ Options & Correct Answer</label>
+                  
+                  {questionForm.options.map((opt, oIdx) => (
+                    <div key={oIdx} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="correct-option"
+                        checked={Number(questionForm.correct_option_index) === oIdx}
+                        onChange={() => setQuestionForm({ ...questionForm, correct_option_index: oIdx })}
+                        className="rounded-full text-purple-600 focus:ring-purple-500"
+                      />
+                      <input
+                        type="text"
+                        required
+                        placeholder={`Option ${oIdx + 1}`}
+                        value={opt}
+                        onChange={(e) => {
+                          const updated = [...questionForm.options];
+                          updated[oIdx] = e.target.value;
+                          setQuestionForm({ ...questionForm, options: updated });
+                        }}
+                        className="flex-1 bg-white/[0.02] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-neutral-500 italic">Select the radio button next to the correct answer option.</p>
+                </div>
+              )}
+
+              <div className="flex gap-2.5 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowQuestionModal(false)}
+                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-xs font-semibold"
+                >
+                  Save Question
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* 3. Resource Item Creation/Edit Modal */}
       {showResourceModal && (
@@ -2518,6 +3702,36 @@ export default function AdminDashboardPage() {
                       className="rounded accent-cyan-500"
                     />
                     <span>Study Resources</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-lg p-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminForm.permissions.includes('participants')}
+                      onChange={(e) => {
+                        const newPerms = e.target.checked
+                          ? [...adminForm.permissions, 'participants']
+                          : adminForm.permissions.filter(p => p !== 'participants');
+                        setAdminForm({ ...adminForm, permissions: newPerms });
+                      }}
+                      className="rounded accent-cyan-500"
+                    />
+                    <span>Participants</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-lg p-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adminForm.permissions.includes('exams')}
+                      onChange={(e) => {
+                        const newPerms = e.target.checked
+                          ? [...adminForm.permissions, 'exams']
+                          : adminForm.permissions.filter(p => p !== 'exams');
+                        setAdminForm({ ...adminForm, permissions: newPerms });
+                      }}
+                      className="rounded accent-cyan-500"
+                    />
+                    <span>Exams Console</span>
                   </label>
                 </div>
               </div>

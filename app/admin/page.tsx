@@ -88,7 +88,7 @@ export default function AdminLoginPage() {
         const adminSession = {
           email: matchedAdmin.email,
           role: matchedAdmin.role || 'admin',
-          permissions: matchedAdmin.permissions || ['cms', 'certificates', 'resources', 'events']
+          permissions: matchedAdmin.permissions || ['cms', 'certificates', 'resources', 'events', 'participants', 'exams']
         };
         sessionStorage.setItem('acob_admin_session', JSON.stringify(adminSession));
         router.push('/admin/dashboard');
