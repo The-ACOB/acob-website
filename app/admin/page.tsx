@@ -5,8 +5,8 @@ import { ShieldCheck, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 // Default Developer credentials
-const DEV_EMAIL = 'khanjariff09@gmail.com';
-const DEV_PASS = 'khanacobadminking99';
+const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
+const DEV_PASS = process.env.NEXT_PUBLIC_ADMIN_DEV_PASSWORD || '';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -51,6 +51,7 @@ export default function AdminLoginPage() {
     if (cleanEmail === DEV_EMAIL && password === DEV_PASS) {
       const devSession = {
         email: DEV_EMAIL,
+        password: DEV_PASS,
         role: 'developer',
         permissions: ['all']
       };
@@ -87,6 +88,7 @@ export default function AdminLoginPage() {
       if (matchedAdmin) {
         const adminSession = {
           email: matchedAdmin.email,
+          password: matchedAdmin.password,
           role: matchedAdmin.role || 'admin',
           permissions: matchedAdmin.permissions || ['cms', 'certificates', 'resources', 'events', 'participants', 'exams']
         };

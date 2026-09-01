@@ -10,6 +10,8 @@ import {
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 
+const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
+
 // Static resources definitions
 const STUDENT_RESOURCES = [
   {
@@ -320,6 +322,51 @@ export default function DashboardPage() {
       document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [isExamStarted, activeExam]);
+
+  // Prevent back navigation and page leave
+  useEffect(() => {
+    if (!isExamStarted || !activeExam) return;
+
+    // 1. Prevent closing/refreshing tab
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'You are in the middle of an exam. Leaving will result in disqualification.';
+      return e.returnValue;
+    };
+
+    // 2. Prevent browser back button
+    // Push a dummy state to history so back button consumes the dummy state first
+    window.history.pushState(null, '', window.location.href);
+    
+    const handlePopState = (e: PopStateEvent) => {
+      // Re-push to keep user on the page
+      window.history.pushState(null, '', window.location.href);
+      
+      // Trigger anti-cheat violation for navigating away
+      if (isSubmittingRef.current) return;
+      const next = tabSwitchesRef.current + 1;
+      tabSwitchesRef.current = next;
+      setTabSwitches(next);
+      setWarningCount(fullscreenExitsRef.current + next);
+      
+      if (next >= 2) {
+        isDisqualifiedRef.current = true;
+        setIsDisqualified(true);
+        submitExamResults('disqualified', answersRef.current, fullscreenExitsRef.current + next);
+      } else {
+        setWarningType('tab');
+        setShowWarningModal(true);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
     };
   }, [isExamStarted, activeExam]);
 
@@ -1394,10 +1441,10 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-4">
                   {examsList.filter(exam => {
-                    if (exam.is_live_for_admin_only && user?.email !== 'khanjariff09@gmail.com') {
+                    if (exam.is_live_for_admin_only && user?.email !== DEV_EMAIL) {
                       return false;
                     }
-                    return user?.email === 'khanjariff09@gmail.com' || registeredEvents.includes(exam.event_id);
+                    return user?.email === DEV_EMAIL || registeredEvents.includes(exam.event_id);
                   }).length === 0 ? (
                     <div className="rounded-3xl border border-white/5 bg-neutral-950 p-8 text-center text-neutral-400">
                       <p className="text-sm">No live or scheduled exams found for your registered Olympiad events.</p>
@@ -1407,10 +1454,10 @@ export default function DashboardPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {examsList
                         .filter(exam => {
-                          if (exam.is_live_for_admin_only && user?.email !== 'khanjariff09@gmail.com') {
+                          if (exam.is_live_for_admin_only && user?.email !== DEV_EMAIL) {
                             return false;
                           }
-                          return user?.email === 'khanjariff09@gmail.com' || registeredEvents.includes(exam.event_id);
+                          return user?.email === DEV_EMAIL || registeredEvents.includes(exam.event_id);
                         })
                         .map((exam) => {
                           const submission = userSubmissions.find(sub => sub.exam_id === exam.id);
@@ -1518,7 +1565,7 @@ export default function DashboardPage() {
 
                               {!submission && (
                                 <div className="pt-2">
-                                  {status === 'live' || user?.email === 'khanjariff09@gmail.com' ? (
+                                  {status === 'live' || user?.email === DEV_EMAIL ? (
                                     <button
                                       onClick={async () => {
                                         setActiveExam(exam);

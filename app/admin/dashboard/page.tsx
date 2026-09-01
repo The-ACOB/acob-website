@@ -35,7 +35,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 // Default Developer account info
-const DEV_EMAIL = 'khanjariff09@gmail.com';
+const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
 
 const parseEventsList = (regEvents: any): string[] => {
   if (!regEvents) return [];
@@ -166,6 +166,12 @@ export default function AdminDashboardPage() {
   });
   const [isEditingStudent, setIsEditingStudent] = useState(false);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset pagination on search query or olympiad change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [studentSearchQuery, selectedOlympiadForParticipants]);
   
   // Bulk Message states
   const [showBulkEmailModal, setShowBulkEmailModal] = useState(false);
@@ -586,6 +592,22 @@ export default function AdminDashboardPage() {
 
 
 
+  const getAdminHeaders = (): Record<string, string> => {
+    if (typeof window !== 'undefined') {
+      const sessionStr = sessionStorage.getItem('acob_admin_session');
+      if (sessionStr) {
+        try {
+          const parsed = JSON.parse(sessionStr);
+          return {
+            'x-admin-email': parsed.email || '',
+            'x-admin-password': parsed.password || '',
+          };
+        } catch (e) {}
+      }
+    }
+    return {};
+  };
+
   // ----------------------------------------------------
   // AUTHENTICATION CHECK
   // ----------------------------------------------------
@@ -953,7 +975,11 @@ export default function AdminDashboardPage() {
   const loadStudents = async () => {
     setLoadingStudents(true);
     try {
-      const res = await fetch('/api/admin/students');
+      const res = await fetch('/api/admin/students', {
+        headers: {
+          ...getAdminHeaders()
+        }
+      });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setStudents(data.students || []);
@@ -980,7 +1006,10 @@ export default function AdminDashboardPage() {
       const method = isEditingStudent ? 'PUT' : 'POST';
       const res = await fetch('/api/admin/students', {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAdminHeaders()
+        },
         body: JSON.stringify(studentForm)
       });
       const data = await res.json();
@@ -999,7 +1028,12 @@ export default function AdminDashboardPage() {
     if (!confirm('Are you sure you want to permanently delete this student account? This cannot be undone.')) return;
     setStatusMsg('Deleting student...');
     try {
-      const res = await fetch(`/api/admin/students?id=${studentId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/students?id=${studentId}`, { 
+        method: 'DELETE',
+        headers: {
+          ...getAdminHeaders()
+        }
+      });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
@@ -2720,8 +2754,8 @@ export default function AdminDashboardPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                              {students
-                                .filter(s => {
+                              {(() => {
+                                const filtered = students.filter(s => {
                                   const eventsList = parseEventsList(s.registered_events);
                                   if (!eventsList.includes(selectedOlympiadForParticipants.id)) return false;
 
@@ -2734,8 +2768,22 @@ export default function AdminDashboardPage() {
                                     (s.school || '').toLowerCase().includes(query) ||
                                     (s.grade || '').toLowerCase().includes(query)
                                   );
-                                })
-                                .map((student) => {
+                                });
+
+                                const ITEMS_PER_PAGE = 25;
+                                const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+                                if (paginated.length === 0) {
+                                  return (
+                                    <tr>
+                                      <td colSpan={5} className="py-10 text-center text-neutral-500 font-mono">
+                                        No participants enrolled in this Olympiad yet.
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+
+                                return paginated.map((student) => {
                                   const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
                                   const submission = associatedExam 
                                     ? allSubmissions.find(sub => sub.exam_id === associatedExam.id && sub.student_id === student.id)
@@ -2897,7 +2945,10 @@ export default function AdminDashboardPage() {
                                             try {
                                               const res = await fetch('/api/admin/students', {
                                                 method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
+                                                headers: { 
+                                                  'Content-Type': 'application/json',
+                                                  ...getAdminHeaders()
+                                                },
                                                 body: JSON.stringify({
                                                   id: student.id,
                                                   full_name: student.full_name,
@@ -2922,21 +2973,78 @@ export default function AdminDashboardPage() {
                                     </td>
                                   </tr>
                                 );
-                              })}
-
-                              {students.filter(s => {
-                                const eventsList = parseEventsList(s.registered_events);
-                                return eventsList.includes(selectedOlympiadForParticipants.id);
-                              }).length === 0 && (
-                                <tr>
-                                  <td colSpan={5} className="py-10 text-center text-neutral-500 font-mono">
-                                    No participants enrolled in this Olympiad yet.
-                                  </td>
-                                </tr>
-                              )}
+                                });
+                              })()}
                             </tbody>
                           </table>
                         </div>
+
+                        {/* Pagination Footer */}
+                        {(() => {
+                          const filtered = students.filter(s => {
+                            const eventsList = parseEventsList(s.registered_events);
+                            if (!eventsList.includes(selectedOlympiadForParticipants.id)) return false;
+
+                            const query = studentSearchQuery.toLowerCase().trim();
+                            if (!query) return true;
+
+                            return (
+                              (s.full_name || '').toLowerCase().includes(query) ||
+                              (s.email || '').toLowerCase().includes(query) ||
+                              (s.school || '').toLowerCase().includes(query) ||
+                              (s.grade || '').toLowerCase().includes(query)
+                            );
+                          });
+                          const ITEMS_PER_PAGE = 25;
+                          const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+                          if (totalPages <= 1) return null;
+                          return (
+                            <div className="flex items-center justify-between px-5 py-4 border-t border-white/10 bg-neutral-900/50 text-neutral-400 font-mono text-[10px]">
+                              <div>
+                                Showing <span className="text-white font-bold">{Math.min(filtered.length, (currentPage - 1) * ITEMS_PER_PAGE + 1)}</span> to{' '}
+                                <span className="text-white font-bold">{Math.min(filtered.length, currentPage * ITEMS_PER_PAGE)}</span> of{' '}
+                                <span className="text-white font-bold">{filtered.length}</span> entries
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                  disabled={currentPage === 1}
+                                  className="px-2.5 py-1.5 bg-neutral-900 border border-white/10 rounded-lg hover:text-white disabled:opacity-40 disabled:hover:text-neutral-400 transition-colors"
+                                >
+                                  Prev
+                                </button>
+                                {Array.from({ length: totalPages }).map((_, idx) => {
+                                  const pageNum = idx + 1;
+                                  if (pageNum === 1 || pageNum === totalPages || Math.abs(pageNum - currentPage) <= 1) {
+                                    return (
+                                      <button
+                                        key={pageNum}
+                                        onClick={() => setCurrentPage(pageNum)}
+                                        className={`px-3 py-1.5 rounded-lg border transition-colors ${
+                                          currentPage === pageNum
+                                            ? 'bg-purple-600 border-purple-500 text-white font-bold'
+                                            : 'bg-neutral-900 border-white/10 hover:text-white'
+                                        }`}
+                                      >
+                                        {pageNum}
+                                      </button>
+                                    );
+                                  } else if (pageNum === 2 || pageNum === totalPages - 1) {
+                                    return <span key={pageNum} className="px-1 text-neutral-600">...</span>;
+                                  }
+                                  return null;
+                                })}
+                                <button
+                                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                  disabled={currentPage === totalPages}
+                                  className="px-2.5 py-1.5 bg-neutral-900 border border-white/10 rounded-lg hover:text-white disabled:opacity-40 disabled:hover:text-neutral-400 transition-colors"
+                                >
+                                  Next
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </>

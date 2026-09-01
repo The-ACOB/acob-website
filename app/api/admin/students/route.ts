@@ -17,6 +17,47 @@ const getAdminClient = () => {
   });
 };
 
+const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
+const DEV_PASS = process.env.NEXT_PUBLIC_ADMIN_DEV_PASSWORD || '';
+
+async function validateAdminRequest(req: NextRequest, adminClient: any): Promise<boolean> {
+  const email = req.headers.get('x-admin-email');
+  const password = req.headers.get('x-admin-password');
+
+  if (!email || !password) return false;
+
+  const cleanEmail = email.trim().toLowerCase();
+  
+  // Check Dev credentials
+  if (cleanEmail === DEV_EMAIL && password === DEV_PASS) {
+    return true;
+  }
+
+  // Check custom admin credentials from Database / LocalMock
+  if (!adminClient) {
+    return true; 
+  }
+
+  try {
+    const { data, error } = await adminClient
+      .from('site_content')
+      .select('*')
+      .eq('key', 'admin_accounts')
+      .single();
+
+    if (!error && data && data.content && Array.isArray(data.content.accounts)) {
+      const matched = data.content.accounts.find(
+        (acc: any) => acc.email.toLowerCase().trim() === cleanEmail && acc.password === password
+      );
+      if (matched) return true;
+    }
+  } catch (err) {
+    console.error('Error validating admin credentials:', err);
+  }
+
+  return false;
+}
+
 // Server-side in-memory cache for mock students when Supabase is not configured
 let mockStudents: any[] = [
   {
@@ -47,6 +88,11 @@ let mockStudents: any[] = [
 
 export async function GET(req: NextRequest) {
   const adminClient = getAdminClient();
+  const isValidAdmin = await validateAdminRequest(req, adminClient);
+  if (!isValidAdmin) {
+    return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
+  }
+
   if (!adminClient) {
     return NextResponse.json({ students: mockStudents });
   }
@@ -67,6 +113,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const adminClient = getAdminClient();
+  const isValidAdmin = await validateAdminRequest(req, adminClient);
+  if (!isValidAdmin) {
+    return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
+  }
+
   const body = await req.json();
   const { full_name, email, password, phone, school, grade, registered_events } = body;
 
@@ -140,6 +191,11 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   const adminClient = getAdminClient();
+  const isValidAdmin = await validateAdminRequest(req, adminClient);
+  if (!isValidAdmin) {
+    return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
+  }
+
   const body = await req.json();
   const { id, full_name, email, password, phone, school, grade, registered_events } = body;
 
@@ -218,6 +274,11 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const adminClient = getAdminClient();
+  const isValidAdmin = await validateAdminRequest(req, adminClient);
+  if (!isValidAdmin) {
+    return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
 
