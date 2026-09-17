@@ -29,7 +29,8 @@ import {
   Building,
   Briefcase,
   Contact2,
-  RotateCcw
+  RotateCcw,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -220,7 +221,9 @@ export default function AdminDashboardPage() {
     options: ['', '', '', ''],
     correct_option_index: 0,
     points: 1,
-    version: 'both' // 'english', 'bangla', or 'both'
+    version: 'both', // 'english', 'bangla', or 'both'
+    requires_explanation: false,
+    explanation_prompt: 'Explain your reasoning or solving process for choosing this answer:'
   });
 
   const loadExams = async () => {
@@ -529,7 +532,11 @@ export default function AdminDashboardPage() {
       options: questionForm.type === 'mcq' ? questionForm.options : null,
       correct_option_index: questionForm.type === 'mcq' ? Number(questionForm.correct_option_index) : null,
       points: Number(questionForm.points),
-      version: questionForm.version
+      version: questionForm.version,
+      requires_explanation: questionForm.type === 'mcq' ? Boolean(questionForm.requires_explanation) : false,
+      explanation_prompt: (questionForm.type === 'mcq' && questionForm.requires_explanation) 
+        ? (questionForm.explanation_prompt?.trim() || 'Explain your reasoning or solving process for choosing this answer:') 
+        : null
     };
 
     try {
@@ -539,12 +546,24 @@ export default function AdminDashboardPage() {
             .from('exam_questions')
             .update(questionPayload)
             .eq('id', editingQuestionId);
-          if (error) throw error;
+          if (error) {
+            if (error.message?.includes('requires_explanation') || error.message?.includes('explanation_prompt')) {
+              showError('Database column missing: Please run the SQL migration in Supabase to add requires_explanation and explanation_prompt to the exam_questions table.');
+              return;
+            }
+            throw error;
+          }
         } else {
           const { error } = await supabase
             .from('exam_questions')
             .insert([questionPayload]);
-          if (error) throw error;
+          if (error) {
+            if (error.message?.includes('requires_explanation') || error.message?.includes('explanation_prompt')) {
+              showError('Database column missing: Please run the SQL migration in Supabase to add requires_explanation and explanation_prompt to the exam_questions table.');
+              return;
+            }
+            throw error;
+          }
         }
       } else {
         let updatedQuestions = [...examQuestions];
@@ -2317,7 +2336,9 @@ export default function AdminDashboardPage() {
                                 options: ['', '', '', ''],
                                 correct_option_index: 0,
                                 points: 1,
-                                version: 'both'
+                                version: 'both',
+                                requires_explanation: false,
+                                explanation_prompt: 'Explain your reasoning or solving process for choosing this answer:'
                               });
                               setShowQuestionModal(true);
                             }}
@@ -2348,6 +2369,12 @@ export default function AdminDashboardPage() {
                                       <span className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-white/10 rounded text-neutral-400 uppercase">
                                         Version: {q.version}
                                       </span>
+                                      {q.type === 'mcq' && q.requires_explanation && (
+                                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400 uppercase flex items-center gap-1">
+                                          <FileText size={9} />
+                                          Explanation Box
+                                        </span>
+                                      )}
                                     </div>
                                     {q.instruction && (
                                       <p className="text-[11px] italic text-neutral-400 bg-white/[0.02] p-2 border border-white/5 rounded-lg">
@@ -2370,7 +2397,9 @@ export default function AdminDashboardPage() {
                                           options: q.options || ['', '', '', ''],
                                           correct_option_index: q.correct_option_index || 0,
                                           points: q.points || 1,
-                                          version: q.version || 'both'
+                                          version: q.version || 'both',
+                                          requires_explanation: Boolean(q.requires_explanation),
+                                          explanation_prompt: q.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:'
                                         });
                                         setShowQuestionModal(true);
                                       }}
@@ -2405,6 +2434,20 @@ export default function AdminDashboardPage() {
                                         </div>
                                       );
                                     })}
+                                  </div>
+                                )}
+
+                                {q.type === 'mcq' && q.requires_explanation && (
+                                  <div className="mt-2 p-2.5 bg-cyan-950/20 border border-cyan-500/20 rounded-lg flex items-start gap-2 text-xs">
+                                    <FileText size={13} className="text-cyan-400 shrink-0 mt-0.5" />
+                                    <div className="space-y-0.5">
+                                      <span className="text-[9px] uppercase font-mono font-bold text-cyan-400 block tracking-wider">
+                                        Student Explanation Prompt:
+                                      </span>
+                                      <p className="text-[11px] text-neutral-300 italic">
+                                        "{q.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:'}"
+                                      </p>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -3328,6 +3371,20 @@ export default function AdminDashboardPage() {
                         </div>
                       )}
 
+                      {q.type === 'mcq' && (q.requires_explanation || viewingSubmission.answers?.[`${q.id}_explanation`]) && (
+                        <div className="pt-2.5 mt-2 border-t border-white/5 space-y-1.5">
+                          <span className="text-[9px] uppercase font-mono text-cyan-400 block font-semibold flex items-center gap-1.5">
+                            <FileText size={11} />
+                            <span>{q.explanation_prompt || "Student's Explanation / Solving Process:"}</span>
+                          </span>
+                          <div className="p-3 bg-neutral-950 border border-white/5 rounded-xl text-xs text-neutral-200 whitespace-pre-wrap leading-relaxed">
+                            {viewingSubmission.answers?.[`${q.id}_explanation`] || (
+                              <span className="text-neutral-500 italic">No explanation submitted by student.</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {q.type === 'broad' && (
                         <div className="pt-1.5 space-y-1">
                           <span className="text-[9px] uppercase font-mono text-neutral-500 block">Student Response:</span>
@@ -3583,6 +3640,47 @@ export default function AdminDashboardPage() {
                     </div>
                   ))}
                   <p className="text-[9px] text-neutral-500 italic">Select the radio button next to the correct answer option.</p>
+
+                  {/* Toggle for Explanation / Solving Process Box */}
+                  <div className="pt-3 border-t border-white/5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-semibold text-white block">Require Solving Process / Reason</span>
+                        <span className="text-[10px] text-neutral-400 block">Prompt students to explain their thought process or solving steps in a textbox below this MCQ</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionForm(prev => ({ ...prev, requires_explanation: !prev.requires_explanation }))}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          questionForm.requires_explanation ? 'bg-cyan-500' : 'bg-neutral-800'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            questionForm.requires_explanation ? 'translate-x-4' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {questionForm.requires_explanation && (
+                      <div className="p-3 bg-neutral-900/70 border border-cyan-500/20 rounded-xl space-y-1.5 animate-fadeIn">
+                        <label className="block text-[10px] font-bold text-cyan-400 uppercase tracking-wider">
+                          Explanation Prompt for Students (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={questionForm.explanation_prompt}
+                          onChange={(e) => setQuestionForm({ ...questionForm, explanation_prompt: e.target.value })}
+                          placeholder="e.g. Explain why you picked this answer or show your solving process:"
+                          className="w-full bg-neutral-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan-500"
+                        />
+                        <p className="text-[9px] text-neutral-400 italic">
+                          This prompt appears directly above the textbox for students during the exam.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

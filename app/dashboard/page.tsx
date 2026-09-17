@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, BookOpen, Award, Settings, Bell, ChevronRight, LogOut, 
   ShieldCheck, Trophy, CheckCircle, Camera, Calendar, ArrowRight,
-  ExternalLink, Download, Sparkles, Lock, Key
+  ExternalLink, Download, Sparkles, Lock, Key, FileText, AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
@@ -145,6 +145,7 @@ export default function DashboardPage() {
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [warningType, setWarningType] = useState<'fullscreen' | 'tab' | null>(null);
   const [examStartTime, setExamStartTime] = useState<number>(0);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   const answersRef = useRef(answers);
   const fullscreenExitsRef = useRef(0);
@@ -228,7 +229,51 @@ export default function DashboardPage() {
     setActiveExam(null);
     setShowWarningModal(false);
     setWarningType(null);
+    setSubmissionError(null);
     isSubmittingRef.current = false;
+  };
+
+  const handleManualSubmit = () => {
+    const unfulfilled: { index: number; id: string }[] = [];
+
+    examQuestions.forEach((q, idx) => {
+      const isMcq = (q.type || '').toLowerCase().trim() === 'mcq';
+      const reqExp = Boolean(
+        q.requires_explanation === true ||
+        q.requires_explanation === 'true' ||
+        q.requires_explanation === 1 ||
+        q.requires_explanation === 't'
+      );
+      const isAnswered = answers[q.id] !== undefined && answers[q.id] !== null && answers[q.id] !== '';
+      const expText = answers[`${q.id}_explanation`];
+      const hasExp = Boolean(expText && expText.trim().length > 0);
+
+      // If user answers that MCQ and explanation is required, explanation is a MUST
+      if (isMcq && reqExp && isAnswered && !hasExp) {
+        unfulfilled.push({ index: idx + 1, id: q.id });
+      }
+    });
+
+    if (unfulfilled.length > 0) {
+      const qNumbers = unfulfilled.map(u => `Question ${u.index}`).join(', ');
+      setSubmissionError(`Explanation Required: You have answered MCQ ${qNumbers} without providing your solving process / reasoning. Because you answered these questions, an explanation is mandatory before you can submit.`);
+
+      const first = unfulfilled[0];
+      const el = document.getElementById(`question-card-${first.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(() => {
+          const textarea = document.getElementById(`textarea-explanation-${first.id}`);
+          if (textarea) textarea.focus();
+        }, 300);
+      }
+      return;
+    }
+
+    setSubmissionError(null);
+    if (confirm('Are you sure you want to submit your exam? You cannot edit your answers once submitted.')) {
+      submitExamResults('submitted');
+    }
   };
 
 
@@ -1888,6 +1933,7 @@ export default function DashboardPage() {
                     setShowPreExamModal(false);
                     setAnswers({});
                     answersRef.current = {};
+                    setSubmissionError(null);
                     setFullscreenExits(0);
                     fullscreenExitsRef.current = 0;
                     setTabSwitches(0);
@@ -1935,6 +1981,23 @@ export default function DashboardPage() {
 
             {/* Questions List */}
             <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full space-y-8 pb-32">
+              {submissionError && (
+                <div className="p-4 bg-amber-950/70 border border-amber-500/40 rounded-2xl flex items-start gap-3 text-xs text-amber-200 shadow-xl animate-shake">
+                  <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 space-y-0.5">
+                    <span className="font-bold text-amber-300 block">Explanation Required</span>
+                    <p className="leading-relaxed">{submissionError}</p>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setSubmissionError(null)} 
+                    className="text-neutral-400 hover:text-white text-sm leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
               {examQuestions.length === 0 ? (
                 <div className="text-center py-20 text-neutral-500">
                   No questions found for this exam.
@@ -1950,7 +2013,7 @@ export default function DashboardPage() {
                         </div>
                       )}
 
-                      <div className="bg-neutral-900 border border-white/5 rounded-3xl p-6 space-y-4">
+                      <div id={`question-card-${question.id}`} className="bg-neutral-900 border border-white/5 rounded-3xl p-6 space-y-4">
                         <div className="flex justify-between items-start gap-4">
                           <span className="text-xs font-mono font-bold text-purple-400">Question {index + 1}</span>
                           <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded-full text-neutral-400">{question.points} Points</span>
@@ -1959,7 +2022,7 @@ export default function DashboardPage() {
                         <p className="text-sm font-semibold text-neutral-100">{question.question_text}</p>
 
                         {/* MCQ Options Selection */}
-                        {question.type === 'mcq' && question.options && Array.isArray(question.options) && (
+                        {(question.type || '').toLowerCase().trim() === 'mcq' && question.options && Array.isArray(question.options) && (
                           <div className="grid grid-cols-1 gap-2.5 pt-2">
                             {question.options.map((opt: string, optIdx: number) => {
                               const isChecked = answers[question.id] === optIdx;
@@ -1986,8 +2049,86 @@ export default function DashboardPage() {
                           </div>
                         )}
 
+                        {/* MCQ Explanation / Solving Process Box */}
+                        {(() => {
+                          const isMcq = (question.type || '').toLowerCase().trim() === 'mcq';
+                          const reqExplanation = isMcq && Boolean(
+                            question.requires_explanation === true ||
+                            question.requires_explanation === 'true' ||
+                            question.requires_explanation === 1 ||
+                            question.requires_explanation === 't'
+                          );
+                          if (!reqExplanation) return null;
+
+                          const isAnswered = answers[question.id] !== undefined && answers[question.id] !== null && answers[question.id] !== '';
+                          const explanationValue = answers[`${question.id}_explanation`] || '';
+                          const hasExplanation = explanationValue.trim().length > 0;
+
+                          return (
+                            <div 
+                              className={`pt-3.5 mt-2 space-y-2.5 border-t transition-all rounded-2xl p-4 ${
+                                isAnswered && !hasExplanation
+                                  ? 'border-amber-500/50 bg-amber-950/20 ring-1 ring-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.08)]'
+                                  : isAnswered && hasExplanation
+                                    ? 'border-emerald-500/30 bg-emerald-950/15'
+                                    : 'border-white/5 bg-white/[0.01]'
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <label 
+                                  htmlFor={`textarea-explanation-${question.id}`}
+                                  className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5"
+                                >
+                                  <FileText size={14} className="text-cyan-400 shrink-0" />
+                                  <span>{question.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:'}</span>
+                                </label>
+
+                                {isAnswered ? (
+                                  hasExplanation ? (
+                                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center gap-1 border border-emerald-500/30">
+                                      <CheckCircle size={11} />
+                                      Explanation Provided
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center gap-1 border border-amber-500/40 animate-pulse">
+                                      <AlertCircle size={11} />
+                                      Mandatory Explanation
+                                    </span>
+                                  )
+                                ) : (
+                                  <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400">
+                                    Required once answered
+                                  </span>
+                                )}
+                              </div>
+
+                              {isAnswered && !hasExplanation && (
+                                <p className="text-[11px] text-amber-300/90 font-medium">
+                                  You selected an option above. You must explain your reasoning or solving process before you can submit the exam.
+                                </p>
+                              )}
+
+                              <textarea
+                                id={`textarea-explanation-${question.id}`}
+                                rows={3}
+                                value={explanationValue}
+                                onChange={(e) => {
+                                  setAnswers(prev => ({ ...prev, [`${question.id}_explanation`]: e.target.value }));
+                                  if (submissionError) setSubmissionError(null);
+                                }}
+                                placeholder="Write your solving steps, logic, or explanation here..."
+                                className={`w-full bg-neutral-950 border rounded-2xl p-4 text-xs text-neutral-200 outline-none transition-all font-sans resize-none placeholder:text-neutral-600 ${
+                                  isAnswered && !hasExplanation
+                                    ? 'border-amber-500/50 focus:border-amber-400 focus:ring-1 focus:ring-amber-400'
+                                    : 'border-white/10 focus:border-cyan-500'
+                                }`}
+                              />
+                            </div>
+                          );
+                        })()}
+
                         {/* Written Question Block */}
-                        {question.type === 'broad' && (
+                        {(question.type || '').toLowerCase().trim() === 'broad' && (
                           <div className="pt-2">
                             <textarea
                               rows={5}
@@ -2003,14 +2144,16 @@ export default function DashboardPage() {
                   ))}
 
                   {/* Mobile Submit Button */}
-                  <div className="md:hidden block pt-4 pb-8">
+                  <div className="md:hidden block pt-4 pb-8 space-y-2">
+                    {submissionError && (
+                      <div className="p-3 bg-amber-950/70 border border-amber-500/40 rounded-2xl text-xs text-amber-200 flex items-center gap-2">
+                        <AlertCircle size={14} className="text-amber-400 shrink-0" />
+                        <span>{submissionError}</span>
+                      </div>
+                    )}
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to submit your exam? You cannot edit your answers once submitted.')) {
-                          submitExamResults('submitted');
-                        }
-                      }}
+                      onClick={handleManualSubmit}
                       className="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-xs font-extrabold shadow-lg hover:shadow-purple-500/20 active:scale-[0.98] transition-all"
                     >
                       Submit Exam Sheet
@@ -2023,14 +2166,18 @@ export default function DashboardPage() {
 
             {/* Bottom Submit Bar (Desktop Only) */}
             <div className="bg-neutral-900 border-t border-white/5 p-4 justify-between items-center fixed bottom-0 left-0 right-0 z-50 hidden md:flex">
-              <span className="text-xs text-neutral-500 italic">Answers are saved in real-time. Do not close this browser tab.</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-neutral-500 italic">Answers are saved in real-time. Do not close this browser tab.</span>
+                {submissionError && (
+                  <span className="text-xs text-amber-300 font-semibold flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/30">
+                    <AlertCircle size={13} className="text-amber-400" />
+                    {submissionError}
+                  </span>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm('Are you sure you want to submit your exam? You cannot edit your answers once submitted.')) {
-                    submitExamResults('submitted');
-                  }
-                }}
+                onClick={handleManualSubmit}
                 className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-xs font-extrabold shadow-lg hover:shadow-purple-500/20 active:scale-[0.98] transition-all"
               >
                 Submit Exam Sheet

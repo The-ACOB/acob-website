@@ -36,8 +36,15 @@ CREATE TABLE IF NOT EXISTS public.exam_questions (
     correct_option_index INTEGER, -- index of correct option for MCQs or null
     points INTEGER DEFAULT 1 NOT NULL,
     version TEXT DEFAULT 'both' NOT NULL, -- 'english', 'bangla', or 'both'
+    requires_explanation BOOLEAN DEFAULT false NOT NULL,
+    explanation_prompt TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Migration snippet to run if public.exam_questions already exists:
+ALTER TABLE public.exam_questions 
+ADD COLUMN IF NOT EXISTS requires_explanation BOOLEAN DEFAULT false NOT NULL,
+ADD COLUMN IF NOT EXISTS explanation_prompt TEXT;
 
 -- Enable RLS for exam_questions
 ALTER TABLE public.exam_questions ENABLE ROW LEVEL SECURITY;
