@@ -691,6 +691,11 @@ export default function DashboardPage() {
     if (registeredEvents.includes(eventId)) return;
     
     const event = events.find(e => e.id === eventId);
+    if (event && event.status === 'closed') {
+      alert('Registrations for this Olympiad are currently closed. The competition is ongoing.');
+      return;
+    }
+
     const eventTitle = event ? event.title : 'this event';
     const confirmed = window.confirm(`Are you sure you want to register for "${eventTitle}"?`);
     if (!confirmed) return;
@@ -1100,19 +1105,36 @@ export default function DashboardPage() {
               <div className="space-y-6">
                 {events.map((event) => {
                   const isRegistered = registeredEvents.includes(event.id);
+                  const isClosed = event.status === 'closed';
+
                   return (
                     <div key={event.id} className="rounded-3xl border border-white/5 bg-neutral-950 p-6 relative overflow-hidden transition-all hover:border-white/10 duration-300">
                       <div className="absolute top-0 right-0 h-32 w-32 bg-purple-500/5 rounded-full blur-2xl" />
                       
                       <div className="flex flex-wrap justify-between items-start gap-4">
                         <div>
-                          <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                            isRegistered 
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                              : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                          }`}>
-                            {isRegistered ? 'Enrolled & Confirmed' : 'Registration Open'}
-                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                              isRegistered 
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                : isClosed
+                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                  : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                            }`}>
+                              {isRegistered 
+                                ? 'Enrolled & Confirmed' 
+                                : isClosed 
+                                  ? 'Olympiad Ongoing • Registrations Closed' 
+                                  : 'Registration Open'}
+                            </span>
+
+                            {isRegistered && isClosed && (
+                              <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                Olympiad Ongoing
+                              </span>
+                            )}
+                          </div>
+
                           <h3 className="font-extrabold text-xl mt-3">{event.title}</h3>
                           <p className="text-neutral-400 text-xs sm:text-sm mt-1 max-w-xl">{event.desc}</p>
                           
@@ -1129,15 +1151,29 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="mt-6 pt-4 border-t border-white/5 flex flex-wrap gap-3 items-center justify-end">
-                        
                         {!isRegistered ? (
-                          <button
-                            onClick={() => handleRegisterEvent(event.id)}
-                            className="flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-semibold text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
-                          >
-                            Register for Event
-                            <ArrowRight size={14} />
-                          </button>
+                          isClosed ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] text-amber-300/80 font-medium">
+                                Registrations are closed for this Olympiad.
+                              </span>
+                              <button
+                                disabled
+                                className="flex items-center gap-1.5 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-2 text-xs font-semibold text-neutral-500 cursor-not-allowed"
+                              >
+                                <Lock size={12} />
+                                <span>Registrations Closed</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleRegisterEvent(event.id)}
+                              className="flex items-center gap-2 rounded-xl bg-purple-600 px-5 py-2.5 text-xs font-semibold text-white transition-all hover:bg-purple-500 active:scale-[0.98]"
+                            >
+                              Register for Event
+                              <ArrowRight size={14} />
+                            </button>
+                          )
                         ) : (
                           <div className="flex flex-wrap gap-2">
                             <button

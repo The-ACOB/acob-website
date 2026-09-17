@@ -30,7 +30,8 @@ import {
   Briefcase,
   Contact2,
   RotateCcw,
-  FileText
+  FileText,
+  Archive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -114,6 +115,7 @@ export default function AdminDashboardPage() {
   // Upcoming Olympiads (Events)
   const [events, setEvents] = useState<any[]>([]);
   const [archivedEvents, setArchivedEvents] = useState<any[]>([]);
+  const [eventsSubTab, setEventsSubTab] = useState<'active' | 'archived'>('active');
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventForm, setEventForm] = useState({
@@ -122,7 +124,8 @@ export default function AdminDashboardPage() {
     date: '',
     category: 'National Olympiad',
     desc: '',
-    syllabus: ''
+    syllabus: '',
+    status: 'open' as 'open' | 'closed' | 'archived'
   });
 
   // Study Resources
@@ -909,16 +912,52 @@ export default function AdminDashboardPage() {
     e.preventDefault();
     if (!eventForm.id.trim() || !eventForm.title.trim()) return;
 
-    setStatusMsg('Saving Event...');
+    setStatusMsg('Saving Olympiad...');
+
+    // If user selected 'archived' as status in the modal:
+    if (eventForm.status === 'archived') {
+      const updatedEvents = events.filter(ev => ev.id !== (editingEventId || eventForm.id));
+      const updatedArchived = [{ ...eventForm, status: 'archived' }, ...archivedEvents.filter(ev => ev.id !== eventForm.id)];
+      try {
+        if (isSupabaseConfigured()) {
+          await supabase.from('site_content').upsert({
+            key: 'upcoming_events',
+            content: { events: updatedEvents }
+          });
+          await supabase.from('site_content').upsert({
+            key: 'archived_events',
+            content: { events: updatedArchived }
+          });
+        } else {
+          localStorage.setItem('acob_local_events', JSON.stringify(updatedEvents));
+          localStorage.setItem('acob_archived_events', JSON.stringify(updatedArchived));
+        }
+        setEvents(updatedEvents);
+        setArchivedEvents(updatedArchived);
+        showToast('Olympiad saved to archives!');
+        setShowEventModal(false);
+        resetEventForm();
+      } catch (err: any) {
+        console.error(err);
+        showError(`Event Save Error: ${err.message || 'Failed to save event.'}`);
+      }
+      return;
+    }
+
     let updatedEvents = [...events];
+    const normalizedForm = {
+      ...eventForm,
+      status: eventForm.status || 'open'
+    };
+
     if (editingEventId) {
-      updatedEvents = updatedEvents.map(ev => ev.id === editingEventId ? eventForm : ev);
+      updatedEvents = updatedEvents.map(ev => ev.id === editingEventId ? { ...ev, ...normalizedForm } : ev);
     } else {
       if (events.some(ev => ev.id === eventForm.id)) {
         showError('An event with this ID already exists.');
         return;
       }
-      updatedEvents.push(eventForm);
+      updatedEvents.push(normalizedForm);
     }
 
     try {
@@ -932,7 +971,7 @@ export default function AdminDashboardPage() {
         localStorage.setItem('acob_local_events', JSON.stringify(updatedEvents));
       }
       setEvents(updatedEvents);
-      showToast(editingEventId ? 'Event updated!' : 'New Event Added!');
+      showToast(editingEventId ? 'Olympiad updated!' : 'New Olympiad Added!');
       setShowEventModal(false);
       resetEventForm();
     } catch (err: any) {
@@ -941,14 +980,44 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleUpdateEventStatus = async (eventId: string, newStatus: 'open' | 'closed' | 'archived') => {
+    if (newStatus === 'archived') {
+      await handleDeleteEvent(eventId);
+      return;
+    }
+
+    const targetEvent = events.find(ev => ev.id === eventId);
+    if (!targetEvent) return;
+
+    setStatusMsg('Updating status...');
+    const updatedEvents = events.map(ev => ev.id === eventId ? { ...ev, status: newStatus } : ev);
+
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('site_content').upsert({
+          key: 'upcoming_events',
+          content: { events: updatedEvents }
+        });
+        if (error) throw error;
+      } else {
+        localStorage.setItem('acob_local_events', JSON.stringify(updatedEvents));
+      }
+      setEvents(updatedEvents);
+      showToast(newStatus === 'open' ? 'Olympiad set to Live & Registrations Open!' : 'Registrations Closed! Olympiad remains Ongoing for exams.');
+    } catch (err: any) {
+      console.error(err);
+      showError(`Status Update Error: ${err.message || 'Failed to update status.'}`);
+    }
+  };
+
   const handleDeleteEvent = async (eventId: string) => {
     const eventToArchive = events.find(ev => ev.id === eventId);
     if (!eventToArchive) return;
 
-    if (!confirm('Are you sure you want to delete this event? It will be moved to the archives, preserving all participant records.')) return;
-    setStatusMsg('Archiving Event...');
+    if (!confirm(`Are you sure you want to archive "${eventToArchive.title}"? It will be moved to the Archived Olympiads section. All participant registrations and exam records are 100% preserved.`)) return;
+    setStatusMsg('Archiving Olympiad...');
     const updatedEvents = events.filter(ev => ev.id !== eventId);
-    const updatedArchived = [eventToArchive, ...archivedEvents];
+    const updatedArchived = [{ ...eventToArchive, status: 'archived' }, ...archivedEvents.filter(ev => ev.id !== eventId)];
 
     try {
       if (isSupabaseConfigured()) {
@@ -969,10 +1038,71 @@ export default function AdminDashboardPage() {
       }
       setEvents(updatedEvents);
       setArchivedEvents(updatedArchived);
-      showToast('Event moved to archive.');
+      showToast('Olympiad moved to archives.');
     } catch (err: any) {
       console.error(err);
       showError(`Archiving Error: ${err.message || 'Failed to archive event.'}`);
+    }
+  };
+
+  const handleRestoreEvent = async (eventId: string) => {
+    const eventToRestore = archivedEvents.find(ev => ev.id === eventId);
+    if (!eventToRestore) return;
+
+    setStatusMsg('Restoring Olympiad...');
+    const updatedArchived = archivedEvents.filter(ev => ev.id !== eventId);
+    const updatedEvents = [{ ...eventToRestore, status: 'open' }, ...events.filter(ev => ev.id !== eventId)];
+
+    try {
+      if (isSupabaseConfigured()) {
+        const { error: error1 } = await supabase.from('site_content').upsert({
+          key: 'upcoming_events',
+          content: { events: updatedEvents }
+        });
+        if (error1) throw error1;
+
+        const { error: error2 } = await supabase.from('site_content').upsert({
+          key: 'archived_events',
+          content: { events: updatedArchived }
+        });
+        if (error2) throw error2;
+      } else {
+        localStorage.setItem('acob_local_events', JSON.stringify(updatedEvents));
+        localStorage.setItem('acob_archived_events', JSON.stringify(updatedArchived));
+      }
+      setEvents(updatedEvents);
+      setArchivedEvents(updatedArchived);
+      showToast('Olympiad restored to active Olympiads list!');
+    } catch (err: any) {
+      console.error(err);
+      showError(`Restore Error: ${err.message || 'Failed to restore event.'}`);
+    }
+  };
+
+  const handlePermanentDeleteArchivedEvent = async (eventId: string) => {
+    const eventToDelete = archivedEvents.find(ev => ev.id === eventId);
+    if (!eventToDelete) return;
+
+    if (!confirm(`Are you sure you want to permanently delete "${eventToDelete.title}" from the archives? This action cannot be undone.`)) return;
+
+    setStatusMsg('Deleting from Archive...');
+    const updatedArchived = archivedEvents.filter(ev => ev.id !== eventId);
+
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase.from('site_content').upsert({
+          key: 'archived_events',
+          content: { events: updatedArchived }
+        });
+        if (error) throw error;
+      } else {
+        localStorage.setItem('acob_archived_events', JSON.stringify(updatedArchived));
+      }
+      setArchivedEvents(updatedArchived);
+      showToast('Archived Olympiad permanently deleted.');
+    } catch (err: any) {
+      console.error(err);
+      showError(`Delete Error: ${err.message || 'Failed to delete archived event.'}`);
     }
   };
 
@@ -984,7 +1114,8 @@ export default function AdminDashboardPage() {
       date: '',
       category: 'National Olympiad',
       desc: '',
-      syllabus: ''
+      syllabus: '',
+      status: 'open'
     });
   };
 
@@ -2035,61 +2166,219 @@ export default function AdminDashboardPage() {
                 animate={{ opacity: 1 }}
                 className="space-y-6"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-xl font-bold">Upcoming Olympiads Manager</h2>
-                    <p className="text-xs text-neutral-500">Add or update competition cards visible on user dashboard</p>
+                    <h2 className="text-xl font-bold">Olympiads & Events Manager</h2>
+                    <p className="text-xs text-neutral-500">Manage live registrations, ongoing exam events, and archived competitions</p>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        resetEventForm();
+                        setShowEventModal(true);
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-purple-500/10"
+                    >
+                      <Plus size={13} />
+                      <span>Create Olympiad</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sub-Tabs: Active vs Archived Olympiads */}
+                <div className="flex items-center gap-2 p-1 bg-neutral-900 border border-white/5 rounded-xl w-fit">
                   <button
-                    onClick={() => {
-                      resetEventForm();
-                      setShowEventModal(true);
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                    type="button"
+                    onClick={() => setEventsSubTab('active')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      eventsSubTab === 'active'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
                   >
-                    <Plus size={13} />
-                    <span>Create Olympiad</span>
+                    <Calendar size={13} />
+                    <span>Active Olympiads ({events.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEventsSubTab('archived')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      eventsSubTab === 'archived'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <Archive size={13} />
+                    <span>Archived Olympiads ({archivedEvents.length})</span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {events.map((ev) => (
-                    <div key={ev.id} className="bg-neutral-950 border border-white/10 rounded-2xl p-5 space-y-4 flex flex-col justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-mono rounded font-semibold">
-                            {ev.category}
-                          </span>
-                          <span className="text-[10px] text-neutral-500 font-mono">{ev.date}</span>
-                        </div>
-                        <h3 className="text-sm font-bold text-white">{ev.title}</h3>
-                        <p className="text-xs text-neutral-400 line-clamp-2">{ev.desc}</p>
-                        <div className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5 text-[11px] text-neutral-300">
-                          <strong className="text-neutral-400">Syllabus:</strong> {ev.syllabus}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-white/5 mt-3">
-                        <button
-                          onClick={() => {
-                            setEditingEventId(ev.id);
-                            setEventForm(ev);
-                            setShowEventModal(true);
-                          }}
-                          className="p-1.5 bg-neutral-900 border border-white/10 rounded-lg text-neutral-400 hover:text-white transition-all"
-                        >
-                          <Edit3 size={13} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteEvent(ev.id)}
-                          className="p-1.5 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 hover:bg-red-500/20 transition-all"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                {/* ACTIVE OLYMPIADS VIEW */}
+                {eventsSubTab === 'active' && (
+                  events.length === 0 ? (
+                    <div className="bg-neutral-950 border border-white/5 rounded-2xl p-12 text-center text-neutral-500 text-xs">
+                      No active Olympiads found. Click "Create Olympiad" to publish one.
                     </div>
-                  ))}
-                </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {events.map((ev) => {
+                        const isClosed = ev.status === 'closed';
+                        return (
+                          <div key={ev.id} className="bg-neutral-950 border border-white/10 rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-white/20 transition-all">
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-mono rounded font-semibold">
+                                  {ev.category}
+                                </span>
+                                
+                                {/* Status badge */}
+                                {isClosed ? (
+                                  <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-mono rounded-full font-bold flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                    Ongoing • Registrations Closed
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono rounded-full font-bold flex items-center gap-1">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    Live & Registration Open
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-baseline justify-between gap-2">
+                                <h3 className="text-sm font-bold text-white">{ev.title}</h3>
+                                <span className="text-[10px] text-neutral-500 font-mono shrink-0">{ev.date}</span>
+                              </div>
+
+                              <span className="text-[10px] font-mono text-neutral-500 block">ID: {ev.id}</span>
+                              <p className="text-xs text-neutral-400 line-clamp-2">{ev.desc}</p>
+                              
+                              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5 text-[11px] text-neutral-300">
+                                <strong className="text-neutral-400">Syllabus:</strong> {ev.syllabus}
+                              </div>
+
+                              {/* Quick Lifecycle Status Switcher */}
+                              <div className="pt-2 border-t border-white/5 space-y-1.5">
+                                <span className="text-[9px] uppercase font-mono font-bold text-neutral-400 block tracking-wider">
+                                  Olympiad State:
+                                </span>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateEventStatus(ev.id, 'open')}
+                                    className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition-all flex items-center justify-center gap-1 ${
+                                      !isClosed
+                                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 ring-1 ring-emerald-500/20 font-bold'
+                                        : 'bg-neutral-900 border-white/5 text-neutral-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                                  >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${!isClosed ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-600'}`} />
+                                    Live & Open
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateEventStatus(ev.id, 'closed')}
+                                    className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold border transition-all flex items-center justify-center gap-1 ${
+                                      isClosed
+                                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/20 font-bold'
+                                        : 'bg-neutral-900 border-white/5 text-neutral-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                                  >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${isClosed ? 'bg-amber-400' : 'bg-neutral-600'}`} />
+                                    Ongoing (Closed)
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-white/5 mt-3">
+                              <button
+                                onClick={() => handleDeleteEvent(ev.id)}
+                                className="px-2.5 py-1.5 bg-neutral-900 hover:bg-red-500/10 border border-white/5 hover:border-red-500/20 rounded-lg text-neutral-400 hover:text-red-400 text-xs font-semibold transition-all flex items-center gap-1.5"
+                                title="Move to Archives"
+                              >
+                                <Archive size={12} />
+                                <span>Archive</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setEditingEventId(ev.id);
+                                  setEventForm({
+                                    id: ev.id,
+                                    title: ev.title || '',
+                                    date: ev.date || '',
+                                    category: ev.category || 'National Olympiad',
+                                    desc: ev.desc || '',
+                                    syllabus: ev.syllabus || '',
+                                    status: ev.status || 'open'
+                                  });
+                                  setShowEventModal(true);
+                                }}
+                                className="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-850 border border-white/10 rounded-lg text-neutral-300 hover:text-white text-xs font-semibold transition-all flex items-center gap-1.5"
+                              >
+                                <Edit3 size={12} />
+                                <span>Edit Olympiad</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* ARCHIVED OLYMPIADS VIEW */}
+                {eventsSubTab === 'archived' && (
+                  archivedEvents.length === 0 ? (
+                    <div className="bg-neutral-950 border border-white/5 rounded-2xl p-12 text-center text-neutral-500 text-xs space-y-2">
+                      <Archive size={32} className="mx-auto text-neutral-600" />
+                      <p className="font-semibold text-neutral-400">No Archived Olympiads Found</p>
+                      <p className="text-[11px] text-neutral-600">When you archive an Olympiad, it will appear here safely preserving participant data.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {archivedEvents.map((ev) => (
+                        <div key={ev.id} className="bg-neutral-950 border border-white/5 rounded-2xl p-5 space-y-4 flex flex-col justify-between opacity-90 hover:opacity-100 transition-all">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="px-2 py-0.5 bg-neutral-800 border border-white/10 text-neutral-400 text-[10px] font-mono rounded font-semibold flex items-center gap-1">
+                                <Archive size={10} />
+                                Archived Olympiad
+                              </span>
+                              <span className="text-[10px] text-neutral-500 font-mono">{ev.date}</span>
+                            </div>
+                            <h3 className="text-sm font-bold text-white">{ev.title}</h3>
+                            <span className="text-[10px] font-mono text-neutral-500 block">ID: {ev.id}</span>
+                            <p className="text-xs text-neutral-400 line-clamp-2">{ev.desc}</p>
+                            {ev.syllabus && (
+                              <div className="bg-white/[0.02] border border-white/5 rounded-lg p-2.5 text-[11px] text-neutral-300">
+                                <strong className="text-neutral-400">Syllabus:</strong> {ev.syllabus}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2.5 pt-3 border-t border-white/5 mt-3">
+                            <button
+                              onClick={() => handleRestoreEvent(ev.id)}
+                              className="px-3 py-1.5 bg-neutral-900 hover:bg-purple-600/20 border border-white/10 hover:border-purple-500/30 rounded-lg text-purple-300 text-xs font-semibold transition-all flex items-center gap-1.5"
+                            >
+                              <RotateCcw size={12} />
+                              <span>Restore to Active</span>
+                            </button>
+                            <button
+                              onClick={() => handlePermanentDeleteArchivedEvent(ev.id)}
+                              className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-red-400 text-xs font-semibold transition-all flex items-center gap-1.5"
+                            >
+                              <Trash2 size={12} />
+                              <span>Delete Permanently</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
               </motion.div>
             )}
 
@@ -3256,6 +3545,55 @@ export default function AdminDashboardPage() {
                   onChange={(e) => setEventForm({ ...eventForm, syllabus: e.target.value })}
                   className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1.5">
+                  Olympiad Lifecycle & Registration Status
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEventForm({ ...eventForm, status: 'open' })}
+                    className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center flex flex-col items-center gap-1 ${
+                      eventForm.status === 'open' || !eventForm.status
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 ring-1 ring-emerald-500/30'
+                        : 'bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-bold">Live & Open</span>
+                    <span className="text-[9px] text-neutral-400 font-normal">Reg Open</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEventForm({ ...eventForm, status: 'closed' })}
+                    className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center flex flex-col items-center gap-1 ${
+                      eventForm.status === 'closed'
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 ring-1 ring-amber-500/30'
+                        : 'bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-amber-400" />
+                    <span className="font-bold">Ongoing</span>
+                    <span className="text-[9px] text-neutral-400 font-normal">Reg Closed</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEventForm({ ...eventForm, status: 'archived' })}
+                    className={`py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center flex flex-col items-center gap-1 ${
+                      eventForm.status === 'archived'
+                        ? 'bg-purple-500/15 border-purple-500/40 text-purple-300 ring-1 ring-purple-500/30'
+                        : 'bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    <Archive size={12} className="text-neutral-400" />
+                    <span className="font-bold">Archived</span>
+                    <span className="text-[9px] text-neutral-400 font-normal">Inactive</span>
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-2.5 pt-4">
