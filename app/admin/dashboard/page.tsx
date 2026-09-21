@@ -31,7 +31,11 @@ import {
   Contact2,
   RotateCcw,
   FileText,
-  Archive
+  Archive,
+  Image as ImageIcon,
+  Upload,
+  Loader2,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -203,6 +207,23 @@ export default function AdminDashboardPage() {
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
 
+  // Custom Rank Management state
+  const [showRankModal, setShowRankModal] = useState(false);
+  const [editingRankSubmission, setEditingRankSubmission] = useState<any | null>(null);
+  const [editingRankStudent, setEditingRankStudent] = useState<any | null>(null);
+  const [customRankInput, setCustomRankInput] = useState('');
+
+  const getEffectiveCustomRank = (s: any): string => {
+    if (!s) return '';
+    if (s.custom_rank && String(s.custom_rank).trim()) {
+      return String(s.custom_rank).trim();
+    }
+    if (s.answers?._custom_rank && String(s.answers._custom_rank).trim()) {
+      return String(s.answers._custom_rank).trim();
+    }
+    return '';
+  };
+
   const [participantsQuestions, setParticipantsQuestions] = useState<any[]>([]);
 
   const [examForm, setExamForm] = useState({
@@ -216,15 +237,17 @@ export default function AdminDashboardPage() {
     duration: 60
   });
 
+  const [isUploadingQuestionImage, setIsUploadingQuestionImage] = useState(false);
+
   const [questionForm, setQuestionForm] = useState({
     id: '',
     instruction: '',
     question_text: '',
+    image_url: '',
     type: 'mcq', // 'mcq' or 'broad'
     options: ['', '', '', ''],
     correct_option_index: 0,
     points: 1,
-    version: 'both', // 'english', 'bangla', or 'both'
     requires_explanation: false,
     explanation_prompt: 'Explain your reasoning or solving process for choosing this answer:'
   });
@@ -294,6 +317,168 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleSaveCustomRank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRankSubmission) return;
+
+    const newRank = customRankInput.trim() || null;
+    setStatusMsg('Saving rank...');
+
+    try {
+      const curAnswers = (typeof editingRankSubmission.answers === 'object' && editingRankSubmission.answers !== null)
+        ? { ...editingRankSubmission.answers }
+        : {};
+
+      if (newRank) {
+        curAnswers._custom_rank = newRank;
+      } else {
+        delete curAnswers._custom_rank;
+      }
+
+      if (isSupabaseConfigured()) {
+        // Try updating custom_rank column together with answers JSONB
+        const { error } = await supabase
+          .from('exam_submissions')
+          .update({
+            custom_rank: newRank,
+            answers: curAnswers
+          })
+          .eq('id', editingRankSubmission.id);
+
+        if (error) {
+          // If custom_rank column is missing from schema cache, fallback to storing in answers JSONB
+          if (error.message?.includes('custom_rank') || error.code === 'PGRST204' || error.message?.includes('schema cache')) {
+            console.warn('custom_rank column not found in schema cache. Falling back to storing in answers JSONB.');
+            const fallbackRes = await supabase
+              .from('exam_submissions')
+              .update({ answers: curAnswers })
+              .eq('id', editingRankSubmission.id);
+
+            if (fallbackRes.error) throw fallbackRes.error;
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      // Update state in allSubmissions
+      setAllSubmissions(prev =>
+        prev.map(s => {
+          if (s.id === editingRankSubmission.id) {
+            const currentAnswers = (typeof s.answers === 'object' && s.answers !== null) ? { ...s.answers } : {};
+            if (newRank) {
+              currentAnswers._custom_rank = newRank;
+            } else {
+              delete currentAnswers._custom_rank;
+            }
+            return {
+              ...s,
+              custom_rank: newRank,
+              answers: currentAnswers
+            };
+          }
+          return s;
+        })
+      );
+
+      // Update in localStorage
+      const localSubsKey = `acob_local_submissions_${editingRankSubmission.student_id}`;
+      const raw = localStorage.getItem(localSubsKey);
+      if (raw) {
+        const list = JSON.parse(raw);
+        const updated = list.map((item: any) => {
+          if (item.id === editingRankSubmission.id) {
+            const currentAnswers = (typeof item.answers === 'object' && item.answers !== null) ? { ...item.answers } : {};
+            if (newRank) {
+              currentAnswers._custom_rank = newRank;
+            } else {
+              delete currentAnswers._custom_rank;
+            }
+            return {
+              ...item,
+              custom_rank: newRank,
+              answers: currentAnswers
+            };
+          }
+          return item;
+        });
+        localStorage.setItem(localSubsKey, JSON.stringify(updated));
+      }
+
+      showToast(newRank ? `Rank updated to "${newRank}"!` : 'Rank reset to system auto-rank!');
+      setShowRankModal(false);
+      setEditingRankSubmission(null);
+      setEditingRankStudent(null);
+    } catch (err: any) {
+      console.error('Error updating rank:', err);
+      showError(`Failed to update rank: ${err.message}`);
+    }
+  };
+
+  const handleResetToAutoRank = async () => {
+    if (!editingRankSubmission) return;
+    setStatusMsg('Resetting to auto rank...');
+    try {
+      const curAnswers = (typeof editingRankSubmission.answers === 'object' && editingRankSubmission.answers !== null)
+        ? { ...editingRankSubmission.answers }
+        : {};
+      delete curAnswers._custom_rank;
+
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase
+          .from('exam_submissions')
+          .update({ custom_rank: null, answers: curAnswers })
+          .eq('id', editingRankSubmission.id);
+
+        if (error) {
+          if (error.message?.includes('custom_rank') || error.code === 'PGRST204' || error.message?.includes('schema cache')) {
+            const fallbackRes = await supabase
+              .from('exam_submissions')
+              .update({ answers: curAnswers })
+              .eq('id', editingRankSubmission.id);
+            if (fallbackRes.error) throw fallbackRes.error;
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      setAllSubmissions(prev =>
+        prev.map(s => {
+          if (s.id === editingRankSubmission.id) {
+            const currentAnswers = (typeof s.answers === 'object' && s.answers !== null) ? { ...s.answers } : {};
+            delete currentAnswers._custom_rank;
+            return { ...s, custom_rank: null, answers: currentAnswers };
+          }
+          return s;
+        })
+      );
+
+      const localSubsKey = `acob_local_submissions_${editingRankSubmission.student_id}`;
+      const raw = localStorage.getItem(localSubsKey);
+      if (raw) {
+        const list = JSON.parse(raw);
+        const updated = list.map((item: any) => {
+          if (item.id === editingRankSubmission.id) {
+            const currentAnswers = (typeof item.answers === 'object' && item.answers !== null) ? { ...item.answers } : {};
+            delete currentAnswers._custom_rank;
+            return { ...item, custom_rank: null, answers: currentAnswers };
+          }
+          return item;
+        });
+        localStorage.setItem(localSubsKey, JSON.stringify(updated));
+      }
+
+      showToast('Rank reset to system auto-rank!');
+      setShowRankModal(false);
+      setEditingRankSubmission(null);
+      setEditingRankStudent(null);
+    } catch (err: any) {
+      console.error('Error resetting rank:', err);
+      showError(`Failed to reset rank: ${err.message}`);
+    }
+  };
+
   const handleTogglePublishResults = async () => {
     if (!selectedOlympiadForParticipants) return;
     const associatedExam = examsList.find(e => e.event_id === selectedOlympiadForParticipants.id);
@@ -342,7 +527,7 @@ export default function AdminDashboardPage() {
       }
     });
 
-    let rankText = '-';
+    let autoRankText = '-';
     if (submission.status === 'submitted') {
       const enrolledStudents = students.filter(s => {
         const eventsList = parseEventsList(s.registered_events);
@@ -376,21 +561,26 @@ export default function AdminDashboardPage() {
       const index = scoredSubmissions.findIndex(s => s.studentId === studentId);
       if (index !== -1) {
         const rank = index + 1;
-        if (rank === 1) rankText = '1st';
-        else if (rank === 2) rankText = '2nd';
-        else if (rank === 3) rankText = '3rd';
-        else rankText = `${rank}th`;
+        if (rank === 1) autoRankText = '1st';
+        else if (rank === 2) autoRankText = '2nd';
+        else if (rank === 3) autoRankText = '3rd';
+        else autoRankText = `${rank}th`;
       }
     }
+
+    const effectiveCustom = getEffectiveCustomRank(submission);
+    const hasCustomRank = Boolean(effectiveCustom);
+    const rankText = hasCustomRank ? effectiveCustom : autoRankText;
 
     return {
       status: submission.status,
       score,
       total,
       rankText,
+      autoRankText,
+      hasCustomRank,
       warningsCount: submission.warnings_count,
-      timeTaken: submission.time_taken,
-      version: submission.version_selected
+      timeTaken: submission.time_taken
     };
   };
 
@@ -518,6 +708,84 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showError('Please upload an image file (PNG, JPG, WebP, GIF, SVG).');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      showError('Image is too large. Please select an image under 10MB.');
+      return;
+    }
+
+    setIsUploadingQuestionImage(true);
+
+    try {
+      if (isSupabaseConfigured()) {
+        const fileExt = file.name.split('.').pop() || 'png';
+        const fileName = `question-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+        const filePath = `questions/${fileName}`;
+
+        // Attempt upload to 'exam-questions' storage bucket
+        const { error: uploadErr } = await supabase.storage
+          .from('exam-questions')
+          .upload(filePath, file, { upsert: true, contentType: file.type });
+
+        if (!uploadErr) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('exam-questions')
+            .getPublicUrl(filePath);
+          setQuestionForm(prev => ({ ...prev, image_url: publicUrl }));
+          showToast('Image uploaded successfully to Supabase Storage!');
+          setIsUploadingQuestionImage(false);
+          return;
+        }
+
+        // Try avatars bucket fallback if exam-questions bucket is not yet created
+        const { error: avatarErr } = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, { upsert: true, contentType: file.type });
+
+        if (!avatarErr) {
+          const { data: { publicUrl } } = supabase.storage
+            .from('avatars')
+            .getPublicUrl(filePath);
+          setQuestionForm(prev => ({ ...prev, image_url: publicUrl }));
+          showToast('Image uploaded successfully!');
+          setIsUploadingQuestionImage(false);
+          return;
+        }
+      }
+
+      // Fallback: convert to Base64 data URL
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        setQuestionForm(prev => ({ ...prev, image_url: base64data }));
+        showToast('Image attached successfully!');
+        setIsUploadingQuestionImage(false);
+      };
+      reader.onerror = () => {
+        showError('Failed to read image file.');
+        setIsUploadingQuestionImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error('Image upload error:', err);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setQuestionForm(prev => ({ ...prev, image_url: reader.result as string }));
+        showToast('Image attached!');
+        setIsUploadingQuestionImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSaveQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedExam) return;
@@ -527,15 +795,16 @@ export default function AdminDashboardPage() {
     }
 
     setStatusMsg('Saving Question...');
-    const questionPayload = {
+    const questionPayload: any = {
       exam_id: selectedExam.id,
       instruction: questionForm.instruction || null,
       question_text: questionForm.question_text,
+      image_url: questionForm.image_url?.trim() || null,
       type: questionForm.type,
       options: questionForm.type === 'mcq' ? questionForm.options : null,
       correct_option_index: questionForm.type === 'mcq' ? Number(questionForm.correct_option_index) : null,
       points: Number(questionForm.points),
-      version: questionForm.version,
+      version: 'both',
       requires_explanation: questionForm.type === 'mcq' ? Boolean(questionForm.requires_explanation) : false,
       explanation_prompt: (questionForm.type === 'mcq' && questionForm.requires_explanation) 
         ? (questionForm.explanation_prompt?.trim() || 'Explain your reasoning or solving process for choosing this answer:') 
@@ -550,6 +819,10 @@ export default function AdminDashboardPage() {
             .update(questionPayload)
             .eq('id', editingQuestionId);
           if (error) {
+            if (error.message?.includes('image_url')) {
+              showError('Database column missing: Please run the SQL migration in Supabase to add image_url to the exam_questions table.');
+              return;
+            }
             if (error.message?.includes('requires_explanation') || error.message?.includes('explanation_prompt')) {
               showError('Database column missing: Please run the SQL migration in Supabase to add requires_explanation and explanation_prompt to the exam_questions table.');
               return;
@@ -561,6 +834,10 @@ export default function AdminDashboardPage() {
             .from('exam_questions')
             .insert([questionPayload]);
           if (error) {
+            if (error.message?.includes('image_url')) {
+              showError('Database column missing: Please run the SQL migration in Supabase to add image_url to the exam_questions table.');
+              return;
+            }
             if (error.message?.includes('requires_explanation') || error.message?.includes('explanation_prompt')) {
               showError('Database column missing: Please run the SQL migration in Supabase to add requires_explanation and explanation_prompt to the exam_questions table.');
               return;
@@ -2621,11 +2898,11 @@ export default function AdminDashboardPage() {
                                 id: '',
                                 instruction: '',
                                 question_text: '',
+                                image_url: '',
                                 type: 'mcq',
                                 options: ['', '', '', ''],
                                 correct_option_index: 0,
                                 points: 1,
-                                version: 'both',
                                 requires_explanation: false,
                                 explanation_prompt: 'Explain your reasoning or solving process for choosing this answer:'
                               });
@@ -2647,7 +2924,7 @@ export default function AdminDashboardPage() {
                             {examQuestions.map((q, idx) => (
                               <div key={q.id || idx} className="bg-white/[0.01] border border-white/5 rounded-xl p-4 space-y-3 relative">
                                 <div className="flex items-start justify-between gap-4">
-                                  <div className="space-y-1">
+                                  <div className="space-y-1 flex-1">
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                       <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded text-purple-400 uppercase">
                                         Q{idx + 1} - {q.type}
@@ -2655,9 +2932,12 @@ export default function AdminDashboardPage() {
                                       <span className="text-[9px] font-mono px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400">
                                         {q.points} pt{q.points > 1 ? 's' : ''}
                                       </span>
-                                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-neutral-900 border border-white/10 rounded text-neutral-400 uppercase">
-                                        Version: {q.version}
-                                      </span>
+                                      {q.image_url && (
+                                        <span className="text-[9px] font-mono px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400 flex items-center gap-1">
+                                          <ImageIcon size={9} />
+                                          Image
+                                        </span>
+                                      )}
                                       {q.type === 'mcq' && q.requires_explanation && (
                                         <span className="text-[9px] font-mono px-1.5 py-0.5 bg-cyan-500/10 border border-cyan-500/20 rounded text-cyan-400 uppercase flex items-center gap-1">
                                           <FileText size={9} />
@@ -2672,6 +2952,26 @@ export default function AdminDashboardPage() {
                                       </p>
                                     )}
                                     <p className="text-xs font-semibold text-white whitespace-pre-wrap">{q.question_text}</p>
+                                    
+                                    {q.image_url && (
+                                      <div className="mt-2 rounded-xl overflow-hidden border border-white/10 max-w-sm bg-neutral-950 p-1.5 flex flex-col gap-1">
+                                        <img
+                                          src={q.image_url}
+                                          alt={`Question ${idx + 1} illustration`}
+                                          className="max-h-48 w-auto rounded-lg object-contain"
+                                          loading="lazy"
+                                        />
+                                        <a
+                                          href={q.image_url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 px-1 font-mono"
+                                        >
+                                          <ExternalLink size={9} />
+                                          <span>View full size</span>
+                                        </a>
+                                      </div>
+                                    )}
                                   </div>
 
                                   <div className="flex gap-1 shrink-0">
@@ -2682,11 +2982,11 @@ export default function AdminDashboardPage() {
                                           id: q.id,
                                           instruction: q.instruction || '',
                                           question_text: q.question_text,
+                                          image_url: q.image_url || '',
                                           type: q.type,
                                           options: q.options || ['', '', '', ''],
                                           correct_option_index: q.correct_option_index || 0,
                                           points: q.points || 1,
-                                          version: q.version || 'both',
                                           requires_explanation: Boolean(q.requires_explanation),
                                           explanation_prompt: q.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:'
                                         });
@@ -3174,10 +3474,43 @@ export default function AdminDashboardPage() {
                                                     Submitted
                                                   </span>
                                                 )}
-                                                {stats.rankText !== '-' && (
-                                                  <span className="text-[10px] font-mono px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full font-bold">
-                                                    Rank: {stats.rankText}
-                                                  </span>
+                                                {stats.rankText !== '-' ? (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEditingRankSubmission(submission);
+                                                      setEditingRankStudent(student);
+                                                      setCustomRankInput(getEffectiveCustomRank(submission));
+                                                      setShowRankModal(true);
+                                                    }}
+                                                    title="Click to edit student rank"
+                                                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                                                      stats.hasCustomRank
+                                                        ? 'bg-amber-500/15 border-amber-500/30 text-amber-300 hover:bg-amber-500/25 ring-1 ring-amber-500/20'
+                                                        : 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20'
+                                                    }`}
+                                                  >
+                                                    <span>Rank: {stats.rankText}</span>
+                                                    {stats.hasCustomRank && (
+                                                      <span className="text-[8px] uppercase tracking-wider bg-amber-500/25 px-1 rounded text-amber-200 font-sans">Custom</span>
+                                                    )}
+                                                    <Edit3 size={9} className="opacity-70" />
+                                                  </button>
+                                                ) : (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setEditingRankSubmission(submission);
+                                                      setEditingRankStudent(student);
+                                                      setCustomRankInput(getEffectiveCustomRank(submission));
+                                                      setShowRankModal(true);
+                                                    }}
+                                                    title="Assign custom rank"
+                                                    className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold flex items-center gap-1 transition-all cursor-pointer border bg-neutral-900/80 border-white/10 text-neutral-400 hover:text-amber-300 hover:border-amber-500/30"
+                                                  >
+                                                    <Award size={9} className="text-amber-400" />
+                                                    <span>Set Rank</span>
+                                                  </button>
                                                 )}
                                               </div>
                                               <div className="text-[9px] text-neutral-500 font-mono space-y-0.5">
@@ -3197,6 +3530,19 @@ export default function AdminDashboardPage() {
                                         <div className="flex gap-2 justify-end items-center">
                                           {submission && (
                                             <>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setEditingRankSubmission(submission);
+                                                  setEditingRankStudent(student);
+                                                  setCustomRankInput(getEffectiveCustomRank(submission));
+                                                  setShowRankModal(true);
+                                                }}
+                                                title="Change Student Rank"
+                                                className="p-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded hover:bg-amber-500/20 transition-colors"
+                                              >
+                                                <Award size={12} />
+                                              </button>
                                               <button
                                                 onClick={() => handleViewAnswers(submission)}
                                                 title="View Submitted Answers"
@@ -3628,7 +3974,7 @@ export default function AdminDashboardPage() {
                   Answers Viewer
                 </h3>
                 <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
-                  Submission ID: {viewingSubmission.id} • Version: <span className="capitalize text-neutral-300 font-bold">{viewingSubmission.version_selected || 'Common'}</span>
+                  Submission ID: {viewingSubmission.id}
                 </p>
               </div>
               <button
@@ -3683,7 +4029,27 @@ export default function AdminDashboardPage() {
                         <span className="text-neutral-500">{q.points} Points</span>
                       </div>
                       
-                      <p className="text-xs font-semibold text-white">{q.question_text}</p>
+                      <p className="text-xs font-semibold text-white whitespace-pre-wrap">{q.question_text}</p>
+                      
+                      {q.image_url && (
+                        <div className="mt-2 rounded-xl overflow-hidden border border-white/10 max-w-sm bg-neutral-950 p-1.5 flex flex-col gap-1">
+                          <img
+                            src={q.image_url}
+                            alt={`Question ${idx + 1} illustration`}
+                            className="max-h-52 w-auto rounded-lg object-contain"
+                            loading="lazy"
+                          />
+                          <a
+                            href={q.image_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-cyan-400 hover:underline flex items-center gap-1 px-1 font-mono"
+                          >
+                            <ExternalLink size={9} />
+                            <span>View full size</span>
+                          </a>
+                        </div>
+                      )}
                       
                       {q.type === 'mcq' && q.options && Array.isArray(q.options) && (
                         <div className="space-y-1.5 pt-1 text-xs">
@@ -3764,6 +4130,132 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       )}
+      {/* Custom Rank Modal */}
+      {showRankModal && editingRankSubmission && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-950 border border-white/10 rounded-3xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-left">
+            <div className="flex justify-between items-start border-b border-white/5 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400">
+                  <Award size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-white">
+                    Adjust Student Rank
+                  </h3>
+                  <p className="text-[11px] text-neutral-400">
+                    Assign a custom rank or title to this participant
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRankModal(false);
+                  setEditingRankSubmission(null);
+                  setEditingRankStudent(null);
+                }}
+                className="p-1.5 hover:bg-white/5 rounded-lg text-neutral-400 hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-3 bg-white/[0.02] border border-white/5 rounded-2xl space-y-1">
+              <div className="text-xs font-bold text-white">
+                {editingRankStudent?.full_name || 'Participant'}
+              </div>
+              <div className="text-[11px] text-neutral-400 font-mono">
+                {editingRankStudent?.email || 'N/A'}
+              </div>
+              {getEffectiveCustomRank(editingRankSubmission) && (
+                <div className="pt-1.5 flex items-center gap-1.5 text-[11px]">
+                  <span className="text-neutral-500">Current rank:</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold font-mono">
+                    {getEffectiveCustomRank(editingRankSubmission)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveCustomRank} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-mono uppercase text-neutral-400 font-bold block mb-1.5">
+                  Custom Rank / Title
+                </label>
+                <input
+                  type="text"
+                  value={customRankInput}
+                  onChange={(e) => setCustomRankInput(e.target.value)}
+                  placeholder="e.g. 1st, 2nd, Champion, Top 10"
+                  className="w-full bg-neutral-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+                  autoFocus
+                />
+                <p className="text-[10px] text-neutral-500 mt-1">
+                  Type any rank or title. Leaving it empty and saving will reset to auto-calculated rank.
+                </p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-mono uppercase text-neutral-500 font-bold block mb-1.5">
+                  Quick Select
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['1st', '2nd', '3rd', '4th', '5th', 'Champion', '1st Runner Up', '2nd Runner Up', 'Honorable Mention', 'Top 10'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setCustomRankInput(preset)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg border font-mono transition-all ${
+                        customRankInput === preset
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold'
+                          : 'bg-white/5 border-white/5 text-neutral-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                <div>
+                  {getEffectiveCustomRank(editingRankSubmission) && (
+                    <button
+                      type="button"
+                      onClick={handleResetToAutoRank}
+                      className="text-[11px] text-red-400 hover:text-red-300 transition-colors font-medium flex items-center gap-1"
+                    >
+                      <RotateCcw size={12} />
+                      Reset to Auto
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRankModal(false);
+                      setEditingRankSubmission(null);
+                      setEditingRankStudent(null);
+                    }}
+                    className="px-3.5 py-2 bg-neutral-900 border border-white/10 hover:bg-neutral-800 text-neutral-300 rounded-xl text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition-all"
+                  >
+                    Save Rank
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Exam Modal */}
       {showExamModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
@@ -3911,7 +4403,96 @@ export default function AdminDashboardPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              {/* Question Image Attachment */}
+              <div className="p-3 bg-white/[0.01] border border-white/5 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <ImageIcon size={12} className="text-cyan-400" />
+                    <span>Question Picture / Diagram (Optional)</span>
+                  </label>
+                  {questionForm.image_url && (
+                    <button
+                      type="button"
+                      onClick={() => setQuestionForm({ ...questionForm, image_url: '' })}
+                      className="text-[10px] text-red-400 hover:text-red-300 flex items-center gap-1 transition-colors"
+                    >
+                      <X size={11} />
+                      <span>Remove Image</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Image Preview if present */}
+                {questionForm.image_url ? (
+                  <div className="relative rounded-xl overflow-hidden border border-white/10 bg-neutral-950 p-2 flex flex-col items-center">
+                    <img
+                      src={questionForm.image_url}
+                      alt="Question illustration preview"
+                      className="max-h-48 w-auto object-contain rounded-lg shadow-md"
+                    />
+                    <div className="mt-2 flex items-center justify-between w-full text-[10px] text-neutral-400 font-mono px-1">
+                      <span className="truncate max-w-[240px] text-neutral-500">
+                        {questionForm.image_url.startsWith('data:') ? 'Base64 image attached' : questionForm.image_url}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionForm({ ...questionForm, image_url: '' })}
+                        className="text-red-400 hover:underline shrink-0"
+                      >
+                        Change / Delete
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-dashed text-xs font-semibold cursor-pointer transition-all ${
+                        isUploadingQuestionImage
+                          ? 'bg-purple-500/10 border-purple-500/40 text-purple-300 cursor-not-allowed'
+                          : 'bg-white/[0.02] border-white/10 hover:border-purple-500/50 hover:bg-white/[0.04] text-neutral-300'
+                      }`}>
+                        {isUploadingQuestionImage ? (
+                          <>
+                            <Loader2 size={13} className="animate-spin text-purple-400" />
+                            <span>Uploading image...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={13} className="text-cyan-400" />
+                            <span>Upload Image File (PNG, JPG, WebP)</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={isUploadingQuestionImage}
+                          onChange={handleQuestionImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="relative flex items-center justify-center py-0.5">
+                      <span className="text-[9px] uppercase tracking-wider text-neutral-500 bg-neutral-950 px-2 relative z-10 font-mono">
+                        or paste image URL
+                      </span>
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-white/5" />
+                      </div>
+                    </div>
+
+                    <input
+                      type="url"
+                      placeholder="https://example.com/diagram.png"
+                      value={questionForm.image_url}
+                      onChange={(e) => setQuestionForm({ ...questionForm, image_url: e.target.value })}
+                      className="w-full bg-neutral-950 border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-cyan-500 placeholder:text-neutral-600"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Question Type</label>
                   <select
@@ -3921,19 +4502,6 @@ export default function AdminDashboardPage() {
                   >
                     <option value="mcq">Multiple Choice (MCQ)</option>
                     <option value="broad">Broad / Written</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Version Group</label>
-                  <select
-                    value={questionForm.version}
-                    onChange={(e) => setQuestionForm({ ...questionForm, version: e.target.value })}
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white outline-none focus:border-purple-500"
-                  >
-                    <option value="both">Both (Common)</option>
-                    <option value="english">English version</option>
-                    <option value="bangla">Bangla version</option>
                   </select>
                 </div>
 

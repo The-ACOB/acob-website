@@ -152,10 +152,21 @@ export default function DashboardPage() {
   const tabSwitchesRef = useRef(0);
   const isDisqualifiedRef = useRef(false);
   const isSubmittingRef = useRef(false);
+  const currentSubmissionIdRef = useRef<string | null>(null);
+  const activeExamRef = useRef<any>(null);
+  const examStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
+
+  useEffect(() => {
+    activeExamRef.current = activeExam;
+  }, [activeExam]);
+
+  useEffect(() => {
+    examStartTimeRef.current = examStartTime;
+  }, [examStartTime]);
 
   const submitExamResults = async (
     status: 'submitted' | 'disqualified',
@@ -184,43 +195,57 @@ export default function DashboardPage() {
     
     // Calculate time taken
     const timeTaken = Math.max(0, Math.floor((Date.now() - examStartTime) / 1000));
+    const subId = currentSubmissionIdRef.current;
     
     try {
       const { isSupabaseConfigured, supabase } = await import('@/lib/supabase');
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('exam_submissions').insert({
-          exam_id: activeExam.id,
-          student_id: user.id,
-          answers: finalAnswers,
-          status,
-          warnings_count: finalWarnings,
-          time_taken: timeTaken,
-          version_selected: null,
-          submitted_at: new Date().toISOString()
-        });
-        if (error) throw error;
+        if (subId) {
+          await supabase.from('exam_submissions').update({
+            answers: finalAnswers,
+            status,
+            warnings_count: finalWarnings,
+            time_taken: timeTaken,
+            submitted_at: new Date().toISOString()
+          }).eq('id', subId);
+        } else {
+          await supabase.from('exam_submissions').insert({
+            exam_id: activeExam.id,
+            student_id: user.id,
+            answers: finalAnswers,
+            status,
+            warnings_count: finalWarnings,
+            time_taken: timeTaken,
+            submitted_at: new Date().toISOString()
+          });
+        }
       } else {
         const localSubsKey = `acob_local_submissions_${user.id}`;
         const existing = localStorage.getItem(localSubsKey);
         const list = existing ? JSON.parse(existing) : [];
+        const idx = list.findIndex((s: any) => (subId && s.id === subId) || s.exam_id === activeExam.id);
         const newSub = {
-          id: crypto.randomUUID?.() || Math.random().toString(),
+          id: subId || crypto.randomUUID?.() || Math.random().toString(),
           exam_id: activeExam.id,
           student_id: user.id,
           answers: finalAnswers,
           status,
           warnings_count: finalWarnings,
           time_taken: timeTaken,
-          version_selected: null,
           submitted_at: new Date().toISOString()
         };
-        list.push(newSub);
+        if (idx !== -1) {
+          list[idx] = newSub;
+        } else {
+          list.push(newSub);
+        }
         localStorage.setItem(localSubsKey, JSON.stringify(list));
       }
     } catch (e) {
       console.error('Error submitting exam:', e);
     }
     
+    currentSubmissionIdRef.current = null;
     // Refresh student exams lists
     await fetchStudentExams();
     
@@ -370,26 +395,116 @@ export default function DashboardPage() {
     };
   }, [isExamStarted, activeExam]);
 
-  // Prevent back navigation and page leave
+  // Prevent back navigation and auto-submit on tab/window close
   useEffect(() => {
     if (!isExamStarted || !activeExam) return;
 
-    // 1. Prevent closing/refreshing tab
+    const handleTabOrPageClose = () => {
+      if (isSubmittingRef.current || !activeExamRef.current || !user) return;
+      isSubmittingRef.current = true;
+
+      const curExam = activeExamRef.current;
+      const subId = currentSubmissionIdRef.current;
+      const timeTaken = Math.max(0, Math.floor((Date.now() - examStartTimeRef.current) / 1000));
+      const finalAnswers = answersRef.current;
+      const finalWarnings = fullscreenExitsRef.current + tabSwitchesRef.current;
+
+      // 1. Immediately update localStorage synchronously
+      try {
+        const localSubsKey = `acob_local_submissions_${user.id}`;
+        const existing = localStorage.getItem(localSubsKey);
+        const list = existing ? JSON.parse(existing) : [];
+        const existingIdx = list.findIndex((s: any) => (subId && s.id === subId) || s.exam_id === curExam.id);
+        const subObj = {
+          id: subId || ('sub-' + Math.random().toString(36).substring(2, 9)),
+          exam_id: curExam.id,
+          student_id: user.id,
+          answers: finalAnswers,
+          status: 'submitted',
+          warnings_count: finalWarnings,
+          time_taken: timeTaken,
+          submitted_at: new Date().toISOString()
+        };
+        if (existingIdx !== -1) {
+          list[existingIdx] = subObj;
+        } else {
+          list.push(subObj);
+        }
+        localStorage.setItem(localSubsKey, JSON.stringify(list));
+      } catch (e) {
+        console.warn('LocalStorage save on page close error:', e);
+      }
+
+      // 2. Beacon / keepalive fetch for Supabase
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (supabaseUrl && supabaseKey && !supabaseUrl.includes('placeholder')) {
+          const payload = JSON.stringify({
+            answers: finalAnswers,
+            status: 'submitted',
+            warnings_count: finalWarnings,
+            time_taken: timeTaken,
+            submitted_at: new Date().toISOString()
+          });
+
+          if (subId) {
+            fetch(`${supabaseUrl}/rest/v1/exam_submissions?id=eq.${subId}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Prefer': 'return=minimal'
+              },
+              body: payload,
+              keepalive: true
+            });
+          } else {
+            fetch(`${supabaseUrl}/rest/v1/exam_submissions`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Prefer': 'return=minimal'
+              },
+              body: JSON.stringify({
+                exam_id: curExam.id,
+                student_id: user.id,
+                answers: finalAnswers,
+                status: 'submitted',
+                warnings_count: finalWarnings,
+                time_taken: timeTaken,
+                submitted_at: new Date().toISOString()
+              }),
+              keepalive: true
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Beacon submit error on page close:', e);
+      }
+    };
+
+    // 1. Alert and submit on closing/refreshing tab
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      handleTabOrPageClose();
       e.preventDefault();
-      e.returnValue = 'You are in the middle of an exam. Leaving will result in disqualification.';
+      e.returnValue = 'You are currently taking an exam. Leaving or closing this tab will automatically submit your exam answers.';
       return e.returnValue;
     };
 
+    const handlePageHide = () => {
+      handleTabOrPageClose();
+    };
+
     // 2. Prevent browser back button
-    // Push a dummy state to history so back button consumes the dummy state first
     window.history.pushState(null, '', window.location.href);
     
     const handlePopState = (e: PopStateEvent) => {
-      // Re-push to keep user on the page
       window.history.pushState(null, '', window.location.href);
       
-      // Trigger anti-cheat violation for navigating away
       if (isSubmittingRef.current) return;
       const next = tabSwitchesRef.current + 1;
       tabSwitchesRef.current = next;
@@ -407,10 +522,12 @@ export default function DashboardPage() {
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('popstate', handlePopState);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('popstate', handlePopState);
     };
   }, [isExamStarted, activeExam]);
@@ -526,6 +643,21 @@ export default function DashboardPage() {
           .from('exam_submissions')
           .select('*')
           .eq('student_id', user.id);
+
+        // Auto-finalize any lingering 'started' submissions (e.g. if student closed tab/browser previously)
+        if (subsData && subsData.length > 0) {
+          const startedSubs = subsData.filter((s: any) => s.status === 'started');
+          for (const s of startedSubs) {
+            await supabase
+              .from('exam_submissions')
+              .update({
+                status: 'submitted',
+                submitted_at: s.submitted_at || new Date().toISOString()
+              })
+              .eq('id', s.id);
+            s.status = 'submitted';
+          }
+        }
         if (subsData) setUserSubmissions(subsData);
 
         const { data: allSubsData } = await supabase.from('exam_submissions').select('*');
@@ -539,7 +671,23 @@ export default function DashboardPage() {
         setExamsList(exams);
         
         const localSubs = localStorage.getItem(`acob_local_submissions_${user.id}`);
-        if (localSubs) setUserSubmissions(localSubs ? JSON.parse(localSubs) : []);
+        let parsedSubs = localSubs ? JSON.parse(localSubs) : [];
+        let hasStarted = false;
+        parsedSubs = parsedSubs.map((s: any) => {
+          if (s.status === 'started') {
+            hasStarted = true;
+            return {
+              ...s,
+              status: 'submitted',
+              submitted_at: s.submitted_at || new Date().toISOString()
+            };
+          }
+          return s;
+        });
+        if (hasStarted) {
+          localStorage.setItem(`acob_local_submissions_${user.id}`, JSON.stringify(parsedSubs));
+        }
+        setUserSubmissions(parsedSubs);
 
         const allLocalSubs: any[] = [];
         const localStudents = localStorage.getItem('acob_student_profiles');
@@ -616,14 +764,20 @@ export default function DashboardPage() {
     });
 
     const index = scoredSubmissions.findIndex(s => s.studentId === user.id);
-    let rankText = '-';
+    let autoRankText = '-';
     if (index !== -1 && submission.status === 'submitted') {
       const rank = index + 1;
-      if (rank === 1) rankText = '1st';
-      else if (rank === 2) rankText = '2nd';
-      else if (rank === 3) rankText = '3rd';
-      else rankText = `${rank}th`;
+      if (rank === 1) autoRankText = '1st';
+      else if (rank === 2) autoRankText = '2nd';
+      else if (rank === 3) autoRankText = '3rd';
+      else autoRankText = `${rank}th`;
     }
+
+    const effectiveCustomRank = (submission.custom_rank && String(submission.custom_rank).trim())
+      || (submission.answers?._custom_rank && String(submission.answers._custom_rank).trim())
+      || null;
+
+    const rankText = effectiveCustomRank || autoRankText;
 
     return {
       score,
@@ -1611,12 +1765,6 @@ export default function DashboardPage() {
                                       {submission.time_taken ? formatDuration(submission.time_taken) : 'N/A'}
                                     </span>
                                   </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-neutral-500">Language:</span>
-                                    <span className="text-neutral-300 font-bold capitalize">
-                                      {submission.version_selected || 'Common'}
-                                    </span>
-                                  </div>
                                   {exam.results_published && (
                                     <>
                                       {(() => {
@@ -1878,7 +2026,7 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* 3. PRE-EXAM DIRECTIONS & VERSION SELECTION MODAL */}
+      {/* 3. PRE-EXAM DIRECTIONS MODAL */}
       <AnimatePresence>
         {showPreExamModal && activeExam && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1966,6 +2114,59 @@ export default function DashboardPage() {
                       console.warn('Fullscreen request blocked or failed:', err);
                     }
                     
+                    const newSubId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('sub-' + Math.random().toString(36).substring(2, 9));
+                    currentSubmissionIdRef.current = newSubId;
+                    const startTimeNow = Date.now();
+
+                    // Immediately record 'started' submission in DB & localStorage so tab close cannot restart exam
+                    try {
+                      const { isSupabaseConfigured, supabase } = await import('@/lib/supabase');
+                      if (isSupabaseConfigured()) {
+                        const { data, error } = await supabase.from('exam_submissions').insert({
+                          id: newSubId,
+                          exam_id: activeExam.id,
+                          student_id: user.id,
+                          answers: {},
+                          status: 'started',
+                          warnings_count: 0,
+                          time_taken: 0,
+                          started_at: new Date().toISOString()
+                        }).select().single();
+                        if (!error && data?.id) {
+                          currentSubmissionIdRef.current = data.id;
+                        }
+                      } else {
+                        const localSubsKey = `acob_local_submissions_${user.id}`;
+                        const existing = localStorage.getItem(localSubsKey);
+                        const list = existing ? JSON.parse(existing) : [];
+                        list.push({
+                          id: newSubId,
+                          exam_id: activeExam.id,
+                          student_id: user.id,
+                          answers: {},
+                          status: 'started',
+                          warnings_count: 0,
+                          time_taken: 0,
+                          started_at: new Date().toISOString()
+                        });
+                        localStorage.setItem(localSubsKey, JSON.stringify(list));
+                      }
+                    } catch (e) {
+                      console.error('Error recording exam start:', e);
+                    }
+
+                    // Immediately update local state so exam list recognizes this exam as active/started
+                    setUserSubmissions(prev => [
+                      ...prev.filter(s => s.exam_id !== activeExam.id),
+                      {
+                        id: currentSubmissionIdRef.current,
+                        exam_id: activeExam.id,
+                        student_id: user.id,
+                        status: 'started',
+                        started_at: new Date().toISOString()
+                      }
+                    ]);
+
                     setShowPreExamModal(false);
                     setAnswers({});
                     answersRef.current = {};
@@ -1977,7 +2178,8 @@ export default function DashboardPage() {
                     setWarningCount(0);
                     setIsDisqualified(false);
                     setElapsedTime(0);
-                    setExamStartTime(Date.now());
+                    setExamStartTime(startTimeNow);
+                    examStartTimeRef.current = startTimeNow;
                     setIsExamStarted(true);
                   }}
                   className="flex-1 py-3 bg-purple-600 hover:bg-purple-500 rounded-2xl text-xs font-bold text-white transition-all hover:shadow-[0_0_20px_rgba(168,85,247,0.4)]"
@@ -2055,7 +2257,19 @@ export default function DashboardPage() {
                           <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded-full text-neutral-400">{question.points} Points</span>
                         </div>
 
-                        <p className="text-sm font-semibold text-neutral-100">{question.question_text}</p>
+                        <p className="text-sm font-semibold text-neutral-100 whitespace-pre-wrap">{question.question_text}</p>
+
+                        {/* Question Image / Diagram */}
+                        {question.image_url && (
+                          <div className="my-2 rounded-2xl overflow-hidden border border-white/10 bg-neutral-950 p-2 sm:p-3 flex flex-col items-center justify-center">
+                            <img
+                              src={question.image_url}
+                              alt={`Question ${index + 1} illustration`}
+                              className="max-h-80 sm:max-h-96 w-auto max-w-full object-contain rounded-xl shadow-lg"
+                              loading="eager"
+                            />
+                          </div>
+                        )}
 
                         {/* MCQ Options Selection */}
                         {(question.type || '').toLowerCase().trim() === 'mcq' && question.options && Array.isArray(question.options) && (
