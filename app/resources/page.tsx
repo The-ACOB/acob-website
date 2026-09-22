@@ -319,7 +319,7 @@ export default function Resources() {
 
                           {selectedVideo && (
                             <div className="p-6 rounded-2xl bg-neutral-950/40 border border-neutral-900/80 backdrop-blur-md space-y-4">
-                              {currentCategory.items.filter(i => i.id === selectedVideo).map((item, idx) => (
+                              {currentCategory.items.filter((i: any) => i.id === selectedVideo).map((item: any, idx: number) => (
                                 <div key={idx} className="space-y-3">
                                   <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-neutral-500">
                                     <span className="flex items-center gap-1"><Calendar size={12} /> {item.date}</span>

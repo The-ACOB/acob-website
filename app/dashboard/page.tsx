@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import MathSymbolPalette from '@/components/math-symbol-palette';
+import { convertCaretsAndMath } from '@/lib/math-symbols';
 
 const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
 
@@ -2247,7 +2249,7 @@ export default function DashboardPage() {
                       {/* Optional Instruction Card */}
                       {question.instruction && (
                         <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl text-xs text-neutral-400 italic">
-                          <strong>Instruction:</strong> {question.instruction}
+                          <strong>Instruction:</strong> {convertCaretsAndMath(question.instruction)}
                         </div>
                       )}
 
@@ -2257,7 +2259,7 @@ export default function DashboardPage() {
                           <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded-full text-neutral-400">{question.points} Points</span>
                         </div>
 
-                        <p className="text-sm font-semibold text-neutral-100 whitespace-pre-wrap">{question.question_text}</p>
+                        <p className="text-sm font-semibold text-neutral-100 whitespace-pre-wrap">{convertCaretsAndMath(question.question_text)}</p>
 
                         {/* Question Image / Diagram */}
                         {question.image_url && (
@@ -2292,7 +2294,7 @@ export default function DashboardPage() {
                                   }`}>
                                     {isChecked && '●'}
                                   </span>
-                                  <span>{opt}</span>
+                                  <span>{convertCaretsAndMath(opt)}</span>
                                 </button>
                               );
                             })}
@@ -2330,7 +2332,7 @@ export default function DashboardPage() {
                                   className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5"
                                 >
                                   <FileText size={14} className="text-cyan-400 shrink-0" />
-                                  <span>{question.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:'}</span>
+                                  <span>{convertCaretsAndMath(question.explanation_prompt || 'Explain your reasoning or solving process for choosing this answer:')}</span>
                                 </label>
 
                                 {isAnswered ? (
@@ -2358,6 +2360,31 @@ export default function DashboardPage() {
                                 </p>
                               )}
 
+                              <MathSymbolPalette
+                                compact={true}
+                                activeTargetName="Explanation"
+                                onInsert={(sym) => {
+                                  const el = document.getElementById(`textarea-explanation-${question.id}`) as HTMLTextAreaElement | null;
+                                  const cur = explanationValue;
+                                  const start = el?.selectionStart ?? cur.length;
+                                  const end = el?.selectionEnd ?? cur.length;
+                                  const next = cur.slice(0, start) + sym + cur.slice(end);
+                                  setAnswers(prev => ({ ...prev, [`${question.id}_explanation`]: next }));
+                                  setTimeout(() => {
+                                    try {
+                                      el?.focus();
+                                      el?.setSelectionRange(start + sym.length, start + sym.length);
+                                    } catch (e) {}
+                                  }, 10);
+                                }}
+                                onAutoFormat={() => {
+                                  setAnswers(prev => ({
+                                    ...prev,
+                                    [`${question.id}_explanation`]: convertCaretsAndMath(explanationValue)
+                                  }));
+                                }}
+                              />
+
                               <textarea
                                 id={`textarea-explanation-${question.id}`}
                                 rows={3}
@@ -2379,12 +2406,37 @@ export default function DashboardPage() {
 
                         {/* Written Question Block */}
                         {(question.type || '').toLowerCase().trim() === 'broad' && (
-                          <div className="pt-2">
+                          <div className="pt-2 space-y-2">
+                            <MathSymbolPalette
+                              compact={true}
+                              activeTargetName="Written Solution"
+                              onInsert={(sym) => {
+                                const el = document.getElementById(`textarea-broad-${question.id}`) as HTMLTextAreaElement | null;
+                                const cur = answers[question.id] || '';
+                                const start = el?.selectionStart ?? cur.length;
+                                const end = el?.selectionEnd ?? cur.length;
+                                const next = cur.slice(0, start) + sym + cur.slice(end);
+                                setAnswers(prev => ({ ...prev, [question.id]: next }));
+                                setTimeout(() => {
+                                  try {
+                                    el?.focus();
+                                    el?.setSelectionRange(start + sym.length, start + sym.length);
+                                  } catch (e) {}
+                                }, 10);
+                              }}
+                              onAutoFormat={() => {
+                                setAnswers(prev => ({
+                                  ...prev,
+                                  [question.id]: convertCaretsAndMath(answers[question.id] || '')
+                                }));
+                              }}
+                            />
                             <textarea
+                              id={`textarea-broad-${question.id}`}
                               rows={5}
                               value={answers[question.id] || ''}
                               onChange={(e) => setAnswers(prev => ({ ...prev, [question.id]: e.target.value }))}
-                              placeholder="Write your answer here..."
+                              placeholder="Write your answer here (supports math formulas, exponents, symbols)..."
                               className="w-full bg-neutral-950 border border-white/10 rounded-2xl p-4 text-xs text-neutral-200 focus:outline-none focus:border-purple-500 transition-all font-sans resize-none"
                             />
                           </div>

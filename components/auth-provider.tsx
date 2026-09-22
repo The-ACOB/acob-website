@@ -10,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  setMockSession: (userMetadata: { name: string; email: string }) => void;
+  setMockSession: (userMetadata: { name: string; email: string; phone?: string }) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({

@@ -4,7 +4,22 @@ import { motion } from 'framer-motion';
 import { Facebook, Mail, Linkedin, Globe } from 'lucide-react';
 import Link from 'next/link';
 
-const leadershipTeam = [
+interface LeaderMember {
+  name: string;
+  role: string;
+  bio: string;
+  image: string;
+  imagePosition?: string;
+  imageScale?: number;
+  socials: {
+    linkedin?: string;
+    email?: string;
+    portfolio?: string;
+    facebook?: string;
+  };
+}
+
+const leadershipTeam: LeaderMember[] = [
   {
     name: 'Muhammad Hasan Zarif',
     role: 'Founder & CEO',

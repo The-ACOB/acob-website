@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -35,10 +35,13 @@ import {
   Image as ImageIcon,
   Upload,
   Loader2,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import MathSymbolPalette from '@/components/math-symbol-palette';
+import { convertCaretsAndMath } from '@/lib/math-symbols';
 
 // Default Developer account info
 const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
@@ -251,6 +254,108 @@ export default function AdminDashboardPage() {
     requires_explanation: false,
     explanation_prompt: 'Explain your reasoning or solving process for choosing this answer:'
   });
+
+  // Math & Exponents helper state for Question Modal
+  const [activeQuestionTargetId, setActiveQuestionTargetId] = useState<string>('question_text');
+  const questionInputRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
+
+  const insertSymbolIntoActiveField = (symbol: string) => {
+    const targetId = activeQuestionTargetId || 'question_text';
+    const el = questionInputRefs.current[targetId];
+
+    if (targetId === 'instruction') {
+      setQuestionForm(prev => {
+        const cur = prev.instruction || '';
+        const start = el?.selectionStart ?? cur.length;
+        const end = el?.selectionEnd ?? cur.length;
+        const next = cur.slice(0, start) + symbol + cur.slice(end);
+        setTimeout(() => {
+          try {
+            el?.focus();
+            el?.setSelectionRange(start + symbol.length, start + symbol.length);
+          } catch (e) {}
+        }, 10);
+        return { ...prev, instruction: next };
+      });
+    } else if (targetId === 'question_text') {
+      setQuestionForm(prev => {
+        const cur = prev.question_text || '';
+        const start = el?.selectionStart ?? cur.length;
+        const end = el?.selectionEnd ?? cur.length;
+        const next = cur.slice(0, start) + symbol + cur.slice(end);
+        setTimeout(() => {
+          try {
+            el?.focus();
+            el?.setSelectionRange(start + symbol.length, start + symbol.length);
+          } catch (e) {}
+        }, 10);
+        return { ...prev, question_text: next };
+      });
+    } else if (targetId === 'explanation_prompt') {
+      setQuestionForm(prev => {
+        const cur = prev.explanation_prompt || '';
+        const start = el?.selectionStart ?? cur.length;
+        const end = el?.selectionEnd ?? cur.length;
+        const next = cur.slice(0, start) + symbol + cur.slice(end);
+        setTimeout(() => {
+          try {
+            el?.focus();
+            el?.setSelectionRange(start + symbol.length, start + symbol.length);
+          } catch (e) {}
+        }, 10);
+        return { ...prev, explanation_prompt: next };
+      });
+    } else if (targetId.startsWith('option_')) {
+      const optIdx = parseInt(targetId.replace('option_', ''), 10);
+      setQuestionForm(prev => {
+        const opts = [...prev.options];
+        const cur = opts[optIdx] || '';
+        const start = el?.selectionStart ?? cur.length;
+        const end = el?.selectionEnd ?? cur.length;
+        opts[optIdx] = cur.slice(0, start) + symbol + cur.slice(end);
+        setTimeout(() => {
+          try {
+            el?.focus();
+            el?.setSelectionRange(start + symbol.length, start + symbol.length);
+          } catch (e) {}
+        }, 10);
+        return { ...prev, options: opts };
+      });
+    }
+  };
+
+  const autoFormatActiveField = () => {
+    const targetId = activeQuestionTargetId || 'question_text';
+    if (targetId === 'instruction') {
+      setQuestionForm(prev => ({ ...prev, instruction: convertCaretsAndMath(prev.instruction || '') }));
+      showToast('Auto-formatted exponents & symbols in Instruction!');
+    } else if (targetId === 'question_text') {
+      setQuestionForm(prev => ({ ...prev, question_text: convertCaretsAndMath(prev.question_text || '') }));
+      showToast('Auto-formatted exponents & symbols in Question Text!');
+    } else if (targetId === 'explanation_prompt') {
+      setQuestionForm(prev => ({ ...prev, explanation_prompt: convertCaretsAndMath(prev.explanation_prompt || '') }));
+      showToast('Auto-formatted exponents & symbols in Explanation Prompt!');
+    } else if (targetId.startsWith('option_')) {
+      const optIdx = parseInt(targetId.replace('option_', ''), 10);
+      setQuestionForm(prev => {
+        const opts = [...prev.options];
+        opts[optIdx] = convertCaretsAndMath(opts[optIdx] || '');
+        return { ...prev, options: opts };
+      });
+      showToast(`Auto-formatted exponents & symbols in Option ${optIdx + 1}!`);
+    }
+  };
+
+  const autoFormatAllQuestionFields = () => {
+    setQuestionForm(prev => ({
+      ...prev,
+      instruction: prev.instruction ? convertCaretsAndMath(prev.instruction) : '',
+      question_text: convertCaretsAndMath(prev.question_text || ''),
+      explanation_prompt: prev.explanation_prompt ? convertCaretsAndMath(prev.explanation_prompt) : '',
+      options: Array.isArray(prev.options) ? prev.options.map(opt => convertCaretsAndMath(opt || '')) : prev.options
+    }));
+    showToast('Auto-formatted exponents & symbols across all fields in this question!');
+  };
 
   const loadExams = async () => {
     setLoadingExams(true);
@@ -795,20 +900,27 @@ export default function AdminDashboardPage() {
     }
 
     setStatusMsg('Saving Question...');
+    const formattedInstruction = questionForm.instruction ? convertCaretsAndMath(questionForm.instruction) : null;
+    const formattedQuestionText = convertCaretsAndMath(questionForm.question_text.trim());
+    const formattedOptions = questionForm.type === 'mcq' && Array.isArray(questionForm.options)
+      ? questionForm.options.map((opt: string) => convertCaretsAndMath(opt))
+      : null;
+    const formattedExplanationPrompt = (questionForm.type === 'mcq' && questionForm.requires_explanation)
+      ? convertCaretsAndMath(questionForm.explanation_prompt?.trim() || 'Explain your reasoning or solving process for choosing this answer:')
+      : null;
+
     const questionPayload: any = {
       exam_id: selectedExam.id,
-      instruction: questionForm.instruction || null,
-      question_text: questionForm.question_text,
+      instruction: formattedInstruction,
+      question_text: formattedQuestionText,
       image_url: questionForm.image_url?.trim() || null,
       type: questionForm.type,
-      options: questionForm.type === 'mcq' ? questionForm.options : null,
+      options: formattedOptions,
       correct_option_index: questionForm.type === 'mcq' ? Number(questionForm.correct_option_index) : null,
       points: Number(questionForm.points),
       version: 'both',
       requires_explanation: questionForm.type === 'mcq' ? Boolean(questionForm.requires_explanation) : false,
-      explanation_prompt: (questionForm.type === 'mcq' && questionForm.requires_explanation) 
-        ? (questionForm.explanation_prompt?.trim() || 'Explain your reasoning or solving process for choosing this answer:') 
-        : null
+      explanation_prompt: formattedExplanationPrompt
     };
 
     try {
@@ -2945,13 +3057,13 @@ export default function AdminDashboardPage() {
                                         </span>
                                       )}
                                     </div>
-                                    {q.instruction && (
-                                      <p className="text-[11px] italic text-neutral-400 bg-white/[0.02] p-2 border border-white/5 rounded-lg">
-                                        <strong className="text-neutral-500 font-sans not-italic block text-[9px] uppercase font-bold tracking-wider mb-0.5">Instruction:</strong>
-                                        {q.instruction}
-                                      </p>
-                                    )}
-                                    <p className="text-xs font-semibold text-white whitespace-pre-wrap">{q.question_text}</p>
+                                     {q.instruction && (
+                                       <p className="text-[11px] italic text-neutral-400 bg-white/[0.02] p-2 border border-white/5 rounded-lg">
+                                         <strong className="text-neutral-500 font-sans not-italic block text-[9px] uppercase font-bold tracking-wider mb-0.5">Instruction:</strong>
+                                         {convertCaretsAndMath(q.instruction)}
+                                       </p>
+                                     )}
+                                     <p className="text-xs font-semibold text-white whitespace-pre-wrap">{convertCaretsAndMath(q.question_text)}</p>
                                     
                                     {q.image_url && (
                                       <div className="mt-2 rounded-xl overflow-hidden border border-white/10 max-w-sm bg-neutral-950 p-1.5 flex flex-col gap-1">
@@ -3018,7 +3130,7 @@ export default function AdminDashboardPage() {
                                               : 'bg-white/[0.01] border-white/5 text-neutral-300'
                                           }`}
                                         >
-                                          <span>{opt}</span>
+                                          <span>{convertCaretsAndMath(opt)}</span>
                                           {isCorrect && <span className="text-[8px] uppercase font-mono px-1 py-0.5 bg-green-500/20 rounded text-green-300">Correct</span>}
                                         </div>
                                       );
@@ -4029,7 +4141,7 @@ export default function AdminDashboardPage() {
                         <span className="text-neutral-500">{q.points} Points</span>
                       </div>
                       
-                      <p className="text-xs font-semibold text-white whitespace-pre-wrap">{q.question_text}</p>
+                      <p className="text-xs font-semibold text-white whitespace-pre-wrap">{convertCaretsAndMath(q.question_text)}</p>
                       
                       {q.image_url && (
                         <div className="mt-2 rounded-xl overflow-hidden border border-white/10 max-w-sm bg-neutral-950 p-1.5 flex flex-col gap-1">
@@ -4066,7 +4178,7 @@ export default function AdminDashboardPage() {
 
                             return (
                               <div key={oIdx} className={`p-2.5 rounded-xl border flex justify-between items-center ${optStyle}`}>
-                                <span>{opt}</span>
+                                <span>{convertCaretsAndMath(opt)}</span>
                                 {isSelected && (isCorrect ? <span>✓ Chosen</span> : <span>✗ Chosen</span>)}
                                 {!isSelected && isCorrectAns && <span className="text-[10px] uppercase font-mono text-green-500">Correct</span>}
                               </div>
@@ -4373,34 +4485,88 @@ export default function AdminDashboardPage() {
       {/* Question Modal */}
       {showQuestionModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-cyan-400 flex items-center gap-1.5">
-              <Plus size={16} />
-              <span>{editingQuestionId ? 'Edit Question' : 'Add New Question'}</span>
-            </h3>
+          <div className="bg-neutral-950 border border-white/10 rounded-2xl p-6 max-w-2xl w-full shadow-2xl relative space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-cyan-400 flex items-center gap-1.5">
+                <Plus size={16} />
+                <span>{editingQuestionId ? 'Edit Question' : 'Add New Question'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowQuestionModal(false)}
+                className="p-1 text-neutral-400 hover:text-white rounded-lg hover:bg-white/5"
+              >
+                <X size={15} />
+              </button>
+            </div>
 
-            <form onSubmit={handleSaveQuestion} className="space-y-3.5 text-left">
+            <form onSubmit={handleSaveQuestion} className="space-y-4 text-left">
+              {/* Math & Exponents Toolbar Palette */}
+              <MathSymbolPalette
+                onInsert={insertSymbolIntoActiveField}
+                onAutoFormat={autoFormatActiveField}
+                activeTargetName={
+                  activeQuestionTargetId === 'instruction' ? 'Instruction' :
+                  activeQuestionTargetId === 'question_text' ? 'Question Text' :
+                  activeQuestionTargetId === 'explanation_prompt' ? 'Explanation Prompt' :
+                  activeQuestionTargetId.startsWith('option_') ? `Option ${parseInt(activeQuestionTargetId.replace('option_', ''), 10) + 1}` :
+                  'Question Text'
+                }
+                activeTargetId={activeQuestionTargetId}
+                onSelectTarget={(id) => setActiveQuestionTargetId(id)}
+                targets={[
+                  { id: 'question_text', label: 'Question Text' },
+                  { id: 'instruction', label: 'Brief Instruction' },
+                  ...(questionForm.type === 'mcq' ? questionForm.options.map((_, i) => ({ id: `option_${i}`, label: `Option ${i + 1}` })) : []),
+                  ...(questionForm.requires_explanation ? [{ id: 'explanation_prompt', label: 'Explanation Prompt' }] : [])
+                ]}
+              />
+
               <div>
                 <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Brief Instruction (Optional)</label>
                 <textarea
+                  ref={(el) => { questionInputRefs.current['instruction'] = el; }}
+                  onFocus={() => setActiveQuestionTargetId('instruction')}
                   placeholder="e.g. Read the passage and answer the logical deduction question."
                   rows={2}
                   value={questionForm.instruction}
                   onChange={(e) => setQuestionForm({ ...questionForm, instruction: e.target.value })}
-                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-sans"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider mb-1">Question Text</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Question Text</label>
+                  <span className="text-[9px] text-neutral-500 font-mono">Supports exponents (eˣ, x²), ℝ, ∈, ≠</span>
+                </div>
                 <textarea
+                  ref={(el) => { questionInputRefs.current['question_text'] = el; }}
+                  onFocus={() => setActiveQuestionTargetId('question_text')}
                   required
-                  placeholder="Type the question content here..."
+                  placeholder="Type or paste question text here (e.g. If f(x)=eˣ lnx (x²-3x+2) and set S={a∈ℝ:f(a)=0}...)"
                   rows={3}
                   value={questionForm.question_text}
                   onChange={(e) => setQuestionForm({ ...questionForm, question_text: e.target.value })}
-                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500"
+                  className="w-full bg-white/[0.02] border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-sans"
                 />
+
+                {/* Quick Caret Detection helper */}
+                {(/\^|!=|=!=|=!|<=|>=|\+-|\\in\b|\\R\b/i.test(questionForm.question_text)) && (
+                  <div className="flex items-center justify-between mt-1 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-300">
+                    <span>💡 Detected carets or shorthand symbols in Question Text</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuestionForm(prev => ({ ...prev, question_text: convertCaretsAndMath(prev.question_text) }));
+                        showToast('Converted carets & symbols to exponents in Question Text!');
+                      }}
+                      className="font-bold underline hover:text-amber-200 ml-2"
+                    >
+                      Convert to Exponents (x²)
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Question Image Attachment */}
@@ -4520,7 +4686,10 @@ export default function AdminDashboardPage() {
 
               {questionForm.type === 'mcq' && (
                 <div className="space-y-2.5 p-3 bg-white/[0.01] border border-white/5 rounded-xl">
-                  <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider">MCQ Options & Correct Answer</label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-bold text-neutral-400 uppercase tracking-wider">MCQ Options & Correct Answer</label>
+                    <span className="text-[9px] text-neutral-500 font-mono">Click option to insert symbol</span>
+                  </div>
                   
                   {questionForm.options.map((opt, oIdx) => (
                     <div key={oIdx} className="flex items-center gap-2">
@@ -4532,6 +4701,8 @@ export default function AdminDashboardPage() {
                         className="rounded-full text-purple-600 focus:ring-purple-500"
                       />
                       <input
+                        ref={(el) => { questionInputRefs.current[`option_${oIdx}`] = el; }}
+                        onFocus={() => setActiveQuestionTargetId(`option_${oIdx}`)}
                         type="text"
                         required
                         placeholder={`Option ${oIdx + 1}`}
@@ -4541,7 +4712,7 @@ export default function AdminDashboardPage() {
                           updated[oIdx] = e.target.value;
                           setQuestionForm({ ...questionForm, options: updated });
                         }}
-                        className="flex-1 bg-white/[0.02] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500"
+                        className="flex-1 bg-white/[0.02] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500 font-sans"
                       />
                     </div>
                   ))}
@@ -4575,11 +4746,13 @@ export default function AdminDashboardPage() {
                           Explanation Prompt for Students (Optional)
                         </label>
                         <input
+                          ref={(el) => { questionInputRefs.current['explanation_prompt'] = el; }}
+                          onFocus={() => setActiveQuestionTargetId('explanation_prompt')}
                           type="text"
                           value={questionForm.explanation_prompt}
                           onChange={(e) => setQuestionForm({ ...questionForm, explanation_prompt: e.target.value })}
                           placeholder="e.g. Explain why you picked this answer or show your solving process:"
-                          className="w-full bg-neutral-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan-500"
+                          className="w-full bg-neutral-950 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-cyan-500 font-sans"
                         />
                         <p className="text-[9px] text-neutral-400 italic">
                           This prompt appears directly above the textbox for students during the exam.
@@ -4590,20 +4763,32 @@ export default function AdminDashboardPage() {
                 </div>
               )}
 
-              <div className="flex gap-2.5 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pt-4 border-t border-white/5">
                 <button
                   type="button"
-                  onClick={() => setShowQuestionModal(false)}
-                  className="flex-1 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold"
+                  onClick={autoFormatAllQuestionFields}
+                  className="px-3 py-2 bg-white/[0.03] hover:bg-white/[0.08] border border-amber-500/30 hover:border-amber-500/50 rounded-xl text-xs font-mono text-amber-300 flex items-center gap-1.5 transition-all"
+                  title="Convert carets (^ to exponents) in question text, instruction, and options at once"
                 >
-                  Cancel
+                  <Zap size={12} className="text-amber-400" />
+                  <span>Auto-Format All Fields (^ → ²)</span>
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-xs font-semibold"
-                >
-                  Save Question
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuestionModal(false)}
+                    className="px-4 py-2.5 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-xs font-semibold text-neutral-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-xs font-semibold text-white shadow-lg shadow-cyan-600/20"
+                  >
+                    Save Question
+                  </button>
+                </div>
               </div>
             </form>
           </div>
