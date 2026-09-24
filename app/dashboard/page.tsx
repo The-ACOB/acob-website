@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import MathSymbolPalette from '@/components/math-symbol-palette';
 import { convertCaretsAndMath } from '@/lib/math-symbols';
 
 const DEV_EMAIL = process.env.NEXT_PUBLIC_ADMIN_DEV_EMAIL || '';
@@ -2360,31 +2359,6 @@ export default function DashboardPage() {
                                 </p>
                               )}
 
-                              <MathSymbolPalette
-                                compact={true}
-                                activeTargetName="Explanation"
-                                onInsert={(sym) => {
-                                  const el = document.getElementById(`textarea-explanation-${question.id}`) as HTMLTextAreaElement | null;
-                                  const cur = explanationValue;
-                                  const start = el?.selectionStart ?? cur.length;
-                                  const end = el?.selectionEnd ?? cur.length;
-                                  const next = cur.slice(0, start) + sym + cur.slice(end);
-                                  setAnswers(prev => ({ ...prev, [`${question.id}_explanation`]: next }));
-                                  setTimeout(() => {
-                                    try {
-                                      el?.focus();
-                                      el?.setSelectionRange(start + sym.length, start + sym.length);
-                                    } catch (e) {}
-                                  }, 10);
-                                }}
-                                onAutoFormat={() => {
-                                  setAnswers(prev => ({
-                                    ...prev,
-                                    [`${question.id}_explanation`]: convertCaretsAndMath(explanationValue)
-                                  }));
-                                }}
-                              />
-
                               <textarea
                                 id={`textarea-explanation-${question.id}`}
                                 rows={3}
@@ -2406,37 +2380,13 @@ export default function DashboardPage() {
 
                         {/* Written Question Block */}
                         {(question.type || '').toLowerCase().trim() === 'broad' && (
-                          <div className="pt-2 space-y-2">
-                            <MathSymbolPalette
-                              compact={true}
-                              activeTargetName="Written Solution"
-                              onInsert={(sym) => {
-                                const el = document.getElementById(`textarea-broad-${question.id}`) as HTMLTextAreaElement | null;
-                                const cur = answers[question.id] || '';
-                                const start = el?.selectionStart ?? cur.length;
-                                const end = el?.selectionEnd ?? cur.length;
-                                const next = cur.slice(0, start) + sym + cur.slice(end);
-                                setAnswers(prev => ({ ...prev, [question.id]: next }));
-                                setTimeout(() => {
-                                  try {
-                                    el?.focus();
-                                    el?.setSelectionRange(start + sym.length, start + sym.length);
-                                  } catch (e) {}
-                                }, 10);
-                              }}
-                              onAutoFormat={() => {
-                                setAnswers(prev => ({
-                                  ...prev,
-                                  [question.id]: convertCaretsAndMath(answers[question.id] || '')
-                                }));
-                              }}
-                            />
+                          <div className="pt-2">
                             <textarea
                               id={`textarea-broad-${question.id}`}
                               rows={5}
                               value={answers[question.id] || ''}
                               onChange={(e) => setAnswers(prev => ({ ...prev, [question.id]: e.target.value }))}
-                              placeholder="Write your answer here (supports math formulas, exponents, symbols)..."
+                              placeholder="Write your answer here..."
                               className="w-full bg-neutral-950 border border-white/10 rounded-2xl p-4 text-xs text-neutral-200 focus:outline-none focus:border-purple-500 transition-all font-sans resize-none"
                             />
                           </div>
