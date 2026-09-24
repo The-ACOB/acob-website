@@ -276,8 +276,15 @@ export function convertCaretsAndMath(text: string): string {
   res = res.replace(/=>/g, '⇒');
   res = res.replace(/->/g, '→');
 
-  // 7. LaTeX wrappers and delimiters
+  // 7. Strip LaTeX math mode wrappers: $$...$$, $...$, \[...\], \(...\)
+  res = res.replace(/\\\[([\s\S]*?)\\\]/g, '$1');
+  res = res.replace(/\\\(([\s\S]*?)\\\)/g, '$1');
+  res = res.replace(/\$\$([\s\S]*?)\$\$/g, '$1');
+  res = res.replace(/\$([^$]+)\$/g, '$1');
+
+  // 8. LaTeX font and text wrappers
   res = res.replace(/\\text\{([^}]+)\}/g, '$1');
+  res = res.replace(/\\(mathbf|mathit|mathrm|operatorname)\{([^}]+)\}/g, '$2');
   res = res.replace(/\\left\s*\\\{/g, '{');
   res = res.replace(/\\right\s*\\\}/g, '}');
   res = res.replace(/\\left\s*\(/g, '(');
@@ -288,17 +295,41 @@ export function convertCaretsAndMath(text: string): string {
   res = res.replace(/\\right\s*\|/g, '|');
   res = res.replace(/\\\{/g, '{');
   res = res.replace(/\\\}/g, '}');
+  res = res.replace(/\\(quad|qquad)/g, '  ');
+  res = res.replace(/\\([,;:!])/g, ' ');
 
-  // 8. Standard math functions (strip backslash)
+  // 9. Fractions: \frac{a}{b} -> a/b or (a)/(b)
+  res = res.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, (_, num, den) => {
+    const cleanNum = num.trim();
+    const cleanDen = den.trim();
+    if (/^[a-zA-Z0-9]+$/.test(cleanNum) && /^[a-zA-Z0-9]+$/.test(cleanDen)) {
+      return `${cleanNum}/${cleanDen}`;
+    }
+    return `(${cleanNum})/(${cleanDen})`;
+  });
+
+  // 10. Square roots: \sqrt{x} -> √x or √(x)
+  res = res.replace(/\\sqrt\[3\]\{([^{}]+)\}/g, '∛($1)');
+  res = res.replace(/\\sqrt\[4\]\{([^{}]+)\}/g, '∜($1)');
+  res = res.replace(/\\sqrt\{([^{}]+)\}/g, (_, inside) => {
+    const clean = inside.trim();
+    if (/^[a-zA-Z0-9]+$/.test(clean)) return `√${clean}`;
+    return `√(${clean})`;
+  });
+
+  // 11. Standard math functions (strip backslash)
   res = res.replace(/\\(ln|log|exp|sin|cos|tan|cot|sec|csc)\b/g, '$1');
 
-  // 9. Common LaTeX / math shorthand commands with backslash
+  // 12. Common LaTeX / math shorthand commands with backslash
   res = res.replace(/\\in\s*R(?=[\s:,\]\}]|$)/g, '∈ ℝ');
   res = res.replace(/\bFor\s+R\b/g, 'For ℝ');
   res = res.replace(/\\in\b/g, '∈');
   res = res.replace(/\\notin\b/g, '∉');
+  res = res.replace(/\\ni\b/g, '∋');
   res = res.replace(/\\subset\b/g, '⊂');
   res = res.replace(/\\subseteq\b/g, '⊆');
+  res = res.replace(/\\supset\b/g, '⊃');
+  res = res.replace(/\\supseteq\b/g, '⊇');
   res = res.replace(/\\cup\b/g, '∪');
   res = res.replace(/\\cap\b/g, '∩');
   res = res.replace(/\\(emptyset|empty)\b/g, '∅');
@@ -308,9 +339,10 @@ export function convertCaretsAndMath(text: string): string {
   res = res.replace(/\\cdot\b/g, '·');
   res = res.replace(/\\div\b/g, '÷');
   res = res.replace(/\\pm\b/g, '±');
+  res = res.replace(/\\mp\b/g, '∓');
   res = res.replace(/\\(ne|neq)\b/g, '≠');
-  res = res.replace(/\\le\b/g, '≤');
-  res = res.replace(/\\ge\b/g, '≥');
+  res = res.replace(/\\(le|leq)\b/g, '≤');
+  res = res.replace(/\\(ge|geq)\b/g, '≥');
   res = res.replace(/\\approx\b/g, '≈');
   res = res.replace(/\\equiv\b/g, '≡');
   res = res.replace(/\\cong\b/g, '≅');
@@ -318,6 +350,11 @@ export function convertCaretsAndMath(text: string): string {
   res = res.replace(/\\angle\b/g, '∠');
   res = res.replace(/\\perp\b/g, '⊥');
   res = res.replace(/\\parallel\b/g, '∥');
+  res = res.replace(/\\(cdots|ldots|dots)\b/g, '…');
+  res = res.replace(/\\(implies|Rightarrow)\b/g, '⇒');
+  res = res.replace(/\\(iff|Leftrightarrow)\b/g, '⇔');
+  res = res.replace(/\\(to|rightarrow)\b/g, '→');
+  res = res.replace(/\\leftarrow\b/g, '←');
   res = res.replace(/\\pi\b/g, 'π');
   res = res.replace(/\\theta\b/g, 'θ');
   res = res.replace(/\\alpha\b/g, 'α');
@@ -338,6 +375,7 @@ export function convertCaretsAndMath(text: string): string {
   res = res.replace(/\\forall\b/g, '∀');
   res = res.replace(/\\exists\b/g, '∃');
   res = res.replace(/\\therefore\b/g, '∴');
+  res = res.replace(/\\because\b/g, '∵');
   res = res.replace(/\\mathbb\{R\}|\\R\b/g, 'ℝ');
   res = res.replace(/\\mathbb\{Z\}|\\Z\b/g, 'ℤ');
   res = res.replace(/\\mathbb\{N\}|\\N\b/g, 'ℕ');
